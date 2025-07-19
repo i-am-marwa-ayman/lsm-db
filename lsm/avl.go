@@ -2,13 +2,13 @@ package lsm
 
 type avl struct {
 	key    string
-	val    string
+	val    *Entry
 	height int
 	right  *avl
 	left   *avl
 }
 
-func NewAvl(key string, val string) *avl {
+func NewAvl(key string, val *Entry) *avl {
 	return &avl{
 		key:    key,
 		val:    val,
@@ -29,7 +29,10 @@ func (avl *avl) updateHeight() {
 func (avl *avl) balanceFactor() int {
 	return avl.childHeight(avl.left) - avl.childHeight(avl.right)
 }
-func (avl *avl) Insert(key string, val string) {
+func (avl *avl) Insert(key string, val *Entry) {
+	if avl == nil {
+		avl = NewAvl(key, val)
+	}
 	if key < avl.key {
 		if avl.left == nil {
 			avl.left = NewAvl(key, val)

@@ -2,16 +2,16 @@ package lsm
 
 import "fmt"
 
-type avl struct {
+type AVL struct {
 	key    string
 	val    *Entry
 	height int
-	right  *avl
-	left   *avl
+	right  *AVL
+	left   *AVL
 }
 
-func NewAvl(key string, val *Entry) *avl {
-	return &avl{
+func NewAvl(key string, val *Entry) *AVL {
+	return &AVL{
 		key:    key,
 		val:    val,
 		height: 0,
@@ -20,19 +20,19 @@ func NewAvl(key string, val *Entry) *avl {
 	}
 }
 
-func (avl *avl) childHeight(child *avl) int {
+func (avl *AVL) childHeight(child *AVL) int {
 	if child == nil {
 		return -1
 	}
 	return child.height
 }
-func (avl *avl) updateHeight() {
+func (avl *AVL) updateHeight() {
 	avl.height = 1 + max(avl.childHeight(avl.left), avl.childHeight(avl.right))
 }
-func (avl *avl) balanceFactor() int {
+func (avl *AVL) balanceFactor() int {
 	return avl.childHeight(avl.left) - avl.childHeight(avl.right)
 }
-func rightRotation(q *avl) *avl {
+func rightRotation(q *AVL) *AVL {
 	p := q.left
 	q.left = p.right
 	p.right = q
@@ -42,17 +42,17 @@ func rightRotation(q *avl) *avl {
 
 	return p
 }
-func leftRotation(q *avl) *avl {
-	p := q.left
-	q.left = p.right
-	p.right = q
+func leftRotation(p *AVL) *AVL {
+	q := p.right
+	p.right = q.left
+	q.left = p
 
-	q.updateHeight()
 	p.updateHeight()
+	q.updateHeight()
 
 	return q
 }
-func balance(node *avl) *avl {
+func balance(node *AVL) *AVL {
 	if node.balanceFactor() == 2 { // left-something
 		if node.left.balanceFactor() == -1 { // left-right
 			node.left = leftRotation(node.left) // convert to left-left
@@ -68,7 +68,7 @@ func balance(node *avl) *avl {
 	return node
 }
 
-func (avl *avl) Insert(key string, val *Entry) *avl {
+func (avl *AVL) Insert(key string, val *Entry) *AVL {
 	if avl == nil {
 		avl = NewAvl(key, val)
 	}
@@ -88,12 +88,37 @@ func (avl *avl) Insert(key string, val *Entry) *avl {
 	avl.updateHeight()
 	return balance(avl)
 }
-func (avl *avl) GetAll() {
-	if avl.left != nil {
-		avl.left.GetAll()
+func (avl *AVL) GetAll() []*Entry {
+	nodes := []*AVL{}
+
+	top := avl
+
+	entries := []*Entry{}
+
+	//          1
+	//        /   \
+	//      2      3
+	//    /  \
+	//  4     5
+
+	for len(nodes) > 0 || top != nil {
+		for top != nil {
+			nodes = append(nodes, top)
+			top = top.left
+		}
+		top = nodes[len(nodes)-1] // 4
+		nodes = nodes[:len(nodes)-1]
+		entries = append(entries, top.val)
+		top = top.right
 	}
-	fmt.Printf("key: %s, val: %s\n", avl.key, avl.val.Value)
+	return entries
+}
+func (avl *AVL) PrintAll() {
+	if avl.left != nil {
+		avl.left.PrintAll()
+	}
+	fmt.Printf("key: %s, val: %s, balance factor: %d\n", avl.key, avl.val.Value, avl.balanceFactor())
 	if avl.right != nil {
-		avl.right.GetAll()
+		avl.right.PrintAll()
 	}
 }

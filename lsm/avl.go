@@ -10,7 +10,7 @@ type AVL struct {
 	left   *AVL
 }
 
-func NewAvl(key string, val *Entry) *AVL {
+func NewAVL(key string, val *Entry) *AVL {
 	return &AVL{
 		key:    key,
 		val:    val,
@@ -70,17 +70,19 @@ func balance(node *AVL) *AVL {
 
 func (avl *AVL) Insert(key string, val *Entry) *AVL {
 	if avl == nil {
-		avl = NewAvl(key, val)
+		avl = NewAVL(key, val)
 	}
-	if key < avl.key {
+	if key == avl.key {
+		avl.val = val
+	} else if key < avl.key {
 		if avl.left == nil {
-			avl.left = NewAvl(key, val)
+			avl.left = NewAVL(key, val)
 		} else {
 			avl.left = avl.left.Insert(key, val)
 		}
 	} else {
 		if avl.right == nil {
-			avl.right = NewAvl(key, val)
+			avl.right = NewAVL(key, val)
 		} else {
 			avl.right = avl.right.Insert(key, val)
 		}
@@ -88,6 +90,20 @@ func (avl *AVL) Insert(key string, val *Entry) *AVL {
 	avl.updateHeight()
 	return balance(avl)
 }
+
+func (avl *AVL) LookUp(key string) *Entry {
+	if avl == nil {
+		return nil
+	}
+	if key == avl.key {
+		return avl.val
+	} else if key < avl.key {
+		return avl.left.LookUp(key)
+	} else {
+		return avl.right.LookUp(key)
+	}
+}
+
 func (avl *AVL) GetAll() []*Entry {
 	nodes := []*AVL{}
 

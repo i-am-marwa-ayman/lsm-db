@@ -5,7 +5,7 @@ import (
 )
 
 type MemTable struct {
-	avl     *avl
+	avl     *AVL
 	size    int
 	maxSize int
 }

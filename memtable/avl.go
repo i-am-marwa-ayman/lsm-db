@@ -68,27 +68,29 @@ func balance(node *AVL) *AVL {
 	return node
 }
 
-func (avl *AVL) Insert(key string, val *Entry) *AVL {
+func (avl *AVL) Insert(key string, val *Entry) (*AVL, int) {
+	newAdd := 1
 	if avl == nil {
 		avl = NewAVL(key, val)
 	}
 	if key == avl.key {
 		avl.val = val
+		newAdd = 0
 	} else if key < avl.key {
 		if avl.left == nil {
 			avl.left = NewAVL(key, val)
 		} else {
-			avl.left = avl.left.Insert(key, val)
+			avl.left, newAdd = avl.left.Insert(key, val)
 		}
 	} else {
 		if avl.right == nil {
 			avl.right = NewAVL(key, val)
 		} else {
-			avl.right = avl.right.Insert(key, val)
+			avl.right, newAdd = avl.right.Insert(key, val)
 		}
 	}
 	avl.updateHeight()
-	return balance(avl)
+	return balance(avl), newAdd
 }
 
 func (avl *AVL) LookUp(key string) *Entry {

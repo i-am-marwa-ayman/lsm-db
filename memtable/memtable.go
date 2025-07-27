@@ -1,7 +1,5 @@
 package memtable
 
-import "fmt"
-
 type MemTable struct {
 	root    *AVL
 	size    int
@@ -18,15 +16,9 @@ func NewMemtable() *MemTable {
 func (mt *MemTable) IsFull() bool {
 	return mt.maxSize == mt.size
 }
-func (mt *MemTable) Get(key string) (string, error) {
-	nEntry := mt.root.LookUp(key)
-	if nEntry == nil {
-		return "", fmt.Errorf("no such a val in memory")
-	} else if nEntry.Tombstone {
-		return "", fmt.Errorf("val is deleted")
-	} else {
-		return nEntry.Value, nil
-	}
+func (mt *MemTable) Get(key string) *Entry {
+	entry := mt.root.LookUp(key)
+	return entry
 }
 func (mt *MemTable) Set(key string, val string) {
 	nEntry := NewEntry(key, val)

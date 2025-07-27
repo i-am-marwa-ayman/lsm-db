@@ -20,20 +20,17 @@ func NewEngine() *Engine {
 }
 
 func (db *Engine) Get(key string) (string, error) { // i think i will make the memtable take a []byte
-	val, err := db.memtable.Get(key)
-	if err != nil {
-		if err == fmt.Errorf("val is deleted") {
-			return "", fmt.Errorf("no such a key")
-		}
-		val, err := db.sstableManager.Get(key)
-		if err != nil {
-			return "", fmt.Errorf("no such a key")
-		} else {
-			return val, nil
-		}
-	} else {
-		return val, err
+	entry := db.memtable.Get(key)
+	if entry != nil && !entry.Tombstone {
+		return entry.Value, nil
 	}
+
+	entry = db.sstableManager.Get(key)
+	if entry != nil && !entry.Tombstone {
+		return entry.Value, nil
+	}
+
+	return "", fmt.Errorf("key does not exist")
 }
 
 func (db *Engine) Set(key string, val string) {

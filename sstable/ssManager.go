@@ -20,16 +20,12 @@ func (sm *SsManager) AddSstable(allEntries []*memtable.Entry) error {
 	sm.sstables = append(sm.sstables, st)
 	return err
 }
-func (sm *SsManager) Get(key string) (string, error) {
+func (sm *SsManager) Get(key string) *memtable.Entry {
 	for i := len(sm.sstables) - 1; i >= 0; i-- {
 		sstable := sm.sstables[i]
 		if entry, err := sstable.get(key); err == nil {
-			if entry.Tombstone {
-				return "", fmt.Errorf("no such a key")
-			} else {
-				return entry.Value, nil
-			}
+			return entry
 		}
 	}
-	return "", fmt.Errorf("no such a key")
+	return nil
 }

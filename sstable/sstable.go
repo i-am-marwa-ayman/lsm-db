@@ -31,10 +31,10 @@ func newSstable(fileName string) *sstable {
 func (st *sstable) writeData(allEntries []*memtable.Entry) error {
 	var err error
 	st.fileWriter, err = os.Create(fmt.Sprintf(("../../data/%s"), st.fileName))
-	defer st.fileWriter.Close()
 	if err != nil {
 		return err
 	}
+	defer st.fileWriter.Close()
 	err = binary.Write(st.fileWriter, binary.LittleEndian, int64(len(allEntries)))
 	if err != nil {
 		return err
@@ -59,10 +59,10 @@ func (st *sstable) writeData(allEntries []*memtable.Entry) error {
 func (st *sstable) get(key string) (*memtable.Entry, error) {
 	var err error
 	st.fileReader, err = os.Open(fmt.Sprintf(("../../data/%s"), st.fileName))
-	defer st.fileReader.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer st.fileReader.Close()
 	var n int64
 	err = binary.Read(st.fileReader, binary.LittleEndian, &n)
 	if err != nil {

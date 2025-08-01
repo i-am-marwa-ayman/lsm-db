@@ -19,20 +19,23 @@ func NewSsManager() *SsManager {
 		sstables: sst,
 	}
 }
-func (sm *SsManager) AddSstable(allEntries []*memtable.Entry) error {
+func (sm *SsManager) AddSstable(entries []*memtable.Entry) error {
 	st := newSstable(fmt.Sprintf("../../data/0.%d.data", len(sm.sstables[0])))
-	err := st.writeData(allEntries)
+	err := st.writeSstable(entries)
 	if err != nil {
 		return err
 	}
 	sm.sstables[0] = append(sm.sstables[0], st)
 	err = sm.fixLevels()
+	sm.listSstables()
+	return err
+}
+func (sm *SsManager) listSstables() {
 	fmt.Println("sstable layout")
 	fmt.Println(len(sm.sstables))
 	for i, level := range sm.sstables {
 		fmt.Printf("in level %d: %d sstabless\n", i, len(level))
 	}
-	return err
 }
 func (sm *SsManager) fixLevels() error {
 	for i, level := range sm.sstables {
@@ -47,7 +50,11 @@ func (sm *SsManager) fixLevels() error {
 			if err != nil {
 				return err
 			}
-			sm.sstables[i+1] = append(sm.sstables[i+1], nst)
+			// if newsstable if empty do not add it (all deleted)
+			nst.readSstable()
+			if nst.size > 0 {
+				sm.sstables[i+1] = append(sm.sstables[i+1], nst)
+			}
 			sm.sstables[i] = make([]*sstable, 0)
 			log.Printf("level %d compacted successfully", i)
 		}
@@ -55,13 +62,14 @@ func (sm *SsManager) fixLevels() error {
 	return nil
 }
 func (sm *SsManager) Get(key string) *memtable.Entry {
-	// searching first row
-	for _, level := range sm.sstables {
+	for l, level := range sm.sstables {
 		for i := len(level) - 1; i >= 0; i-- {
 			sstable := level[i]
-			if entry, err := sstable.get(key); err == nil {
+			if entry, err := sstable.searchSstable(key); entry != nil {
 				fmt.Printf("key founded in sstable: %s\n", sstable.fileName)
 				return entry
+			} else if err != nil {
+				fmt.Printf("error happend in sstable %d.%d: %s", l, i, err)
 			}
 		}
 	}

@@ -1,130 +1,144 @@
 package sstable
 
 import (
-	"encoding/binary"
-	"io"
 	"mini-levelDB/memtable"
-	"os"
 )
 
-func close(first *sstable, second *sstable, newsst *sstable) {
-	first.filePtr.Close()
-	second.filePtr.Close()
-	newsst.filePtr.Close()
-}
-
 // TODO: use seek
-// TODO: use defer
 func (st *sstable) Compact(first *sstable, second *sstable) error {
-	var err error
-	first.filePtr, err = os.Open(first.fileName)
+	rFirst, err := first.newReader()
 	if err != nil {
 		return err
 	}
-	second.filePtr, err = os.Open(second.fileName)
+	defer rFirst.closeReader()
+	err = rFirst.seekToOffset(8)
 	if err != nil {
 		return err
 	}
-	st.filePtr, err = os.OpenFile(st.fileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	rSecond, err := second.newReader()
 	if err != nil {
 		return err
 	}
-	defer close(first, second, st)
-	err = st.writeHeader(0)
+	defer rSecond.closeReader()
+	err = rSecond.seekToOffset(8)
 	if err != nil {
 		return err
 	}
-	var n int64
-	err = binary.Read(first.filePtr, binary.LittleEndian, &n)
+	w, err := st.newWriter()
 	if err != nil {
 		return err
 	}
-	var nn int64
-	err = binary.Read(second.filePtr, binary.LittleEndian, &nn)
+	defer w.closeWriter()
+
+	err = w.writeMetaData(0)
 	if err != nil {
 		return err
 	}
 	ptr1 := 0
 	ptr2 := 0
 	var entry1 *memtable.Entry
-	entry1, err = first.readNextBlock()
+	entry1, err = rFirst.next()
 	if err != nil {
 		return err
 	}
 	var entry2 *memtable.Entry
-	entry2, err = second.readNextBlock()
+	entry2, err = rSecond.next()
 	if err != nil {
 		return err
 	}
 	newSize := 0
-	for ptr1 < int(n) && ptr2 < int(nn) {
+	for ptr1 < first.size && ptr2 < second.size {
 		if entry1.Key == entry2.Key {
 			if !entry2.Tombstone {
-				err = st.writeNextBlock(entry2)
+				err = w.writeNext(entry2)
 				if err != nil {
 					return err
 				}
 				newSize++
 			}
-			entry1, err = first.readNextBlock()
-			if err != nil && err != io.EOF {
-				return err
-			}
-			entry2, err = second.readNextBlock()
-			if err != nil && err != io.EOF {
-				return err
-			}
 			ptr1++
+			if ptr1 < first.size {
+				entry1, err = rFirst.next()
+				if err != nil {
+					return err
+				}
+			}
 			ptr2++
+			if ptr2 < second.size {
+				entry2, err = rSecond.next()
+				if err != nil {
+					return err
+				}
+			}
 		} else if entry1.Key < entry2.Key {
 			if !entry1.Tombstone {
-				st.writeNextBlock(entry1)
+				err = w.writeNext(entry1)
+				if err != nil {
+					return err
+				}
 				newSize++
-			}
-			entry1, err = first.readNextBlock()
-			if err != nil && err != io.EOF {
-				return err
 			}
 			ptr1++
+			if ptr1 < first.size {
+				entry1, err = rFirst.next()
+				if err != nil {
+					return err
+				}
+			}
 		} else {
 			if !entry2.Tombstone {
-				st.writeNextBlock(entry2)
+				err = w.writeNext(entry2)
+				if err != nil {
+					return err
+				}
 				newSize++
 			}
-			entry2, err = second.readNextBlock()
-			if err != nil && err != io.EOF {
-				return err
-			}
 			ptr2++
+			if ptr2 < second.size {
+				entry2, err = rSecond.next()
+				if err != nil {
+					return err
+				}
+			}
 		}
 	}
 	for ptr1 < first.size {
 		if !entry1.Tombstone {
-			st.writeNextBlock(entry1)
+			err = w.writeNext(entry1)
+			if err != nil {
+				return err
+			}
 			newSize++
 		}
-		entry1, err = first.readNextBlock()
-		if err != nil && err != io.EOF {
-			return err
-		}
 		ptr1++
+		if ptr1 < first.size {
+			entry1, err = rFirst.next()
+			if err != nil {
+				return err
+			}
+		}
 	}
 	for ptr2 < second.size {
 		if !entry2.Tombstone {
-			st.writeNextBlock(entry2)
+			err = w.writeNext(entry2)
+			if err != nil {
+				return err
+			}
 			newSize++
 		}
-		entry2, err = second.readNextBlock()
-		if err != nil && err != io.EOF {
-			return err
-		}
 		ptr2++
+		if ptr2 < second.size {
+			entry2, err = rSecond.next()
+			if err != nil {
+				return err
+			}
+		}
 	}
-	_, err = st.filePtr.Seek(0, io.SeekStart)
+	err = w.seekToOffset(0)
 	if err != nil {
 		return err
 	}
 	st.size = newSize
-	err = st.writeHeader(newSize)
+	err = w.writeMetaData(st.size)
 	return err
 }

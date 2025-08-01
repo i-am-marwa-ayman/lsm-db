@@ -7,14 +7,34 @@ import (
 
 func main() {
 	db := engine.NewEngine()
-	db.Set("marwa", "ayman")
-	db.Set("amira", "tarek")
-	db.Set("yasmin", "ahmed")
-	db.Set("dina", "mohamed")
-	db.Set("safy", "ahmed")
-	db.Set("mira", "ashraf")
-	db.Set("marwa", "alwany")
-	//db.Delete("marwa")
-	fmt.Println(db.Get("marwa"))
-	//db.Memtable.Root.PrintAll()
+	db.Set("language", "python")
+	db.Set("framework", "django")
+	db.Set("database", "postgres")
+	db.Set("port", "8080")
+	db.Set("environment", "production")
+	db.Set("version", "1.0.0")
+	db.Set("cache", "redis")
+	db.Set("protocol", "https")
+	db.Set("host", "localhost")
+	db.Set("timeout", "30s")
+	db.Set("user", "admin")
+
+	db.Delete("language")
+	db.Delete("framework")
+	db.Delete("database")
+	db.Delete("port")
+	db.Delete("environment")
+	db.Delete("version")
+	db.Delete("cache")
+	db.Delete("protocol")
+	db.Delete("host")
+	db.Delete("timeout")
+	db.Delete("user")
+
+	val, err := db.Get("user")
+	if err == nil {
+		fmt.Println(val)
+	} else {
+		fmt.Println(err)
+	}
 }

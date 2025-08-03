@@ -1,6 +1,6 @@
 #  LSM-DB
 
-A lightweight, educational implementation of an LSM-tree based key-value database, inspired by Google's LevelDB. Built from scratch in Go to understand the fundamental concepts behind modern database storage engines.
+A lightweight, educational implementation of an LSM-tree based key-value database. Built from scratch in Go to understand the fundamental concepts behind modern database storage engines.
 
 
 ## Features

@@ -9,13 +9,13 @@ import (
 
 type Engine struct {
 	memtable       *memtable.MemTable
-	sstableManager sstable.SsManager
+	sstableManager *sstable.SsManager
 }
 
 func NewEngine() *Engine {
 	return &Engine{
 		memtable:       memtable.NewMemtable(),
-		sstableManager: *sstable.NewSsManager(),
+		sstableManager: sstable.NewSsManager(),
 	}
 }
 

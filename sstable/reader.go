@@ -3,8 +3,8 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"io"
-	"mini-levelDB/memtable"
 	"os"
 )
 
@@ -33,7 +33,32 @@ func (r *stReader) seekToOffset(offset int64) error {
 	_, err := r.filePtr.Seek(offset, io.SeekStart)
 	return err
 }
-func (r *stReader) next() (*memtable.Entry, error) {
+
+// pass offset position
+func (r *stReader) readEntryAtOffset(offsetPos int64) (*memtable.Entry, error) {
+	err := r.seekToOffset(offsetPos)
+	if err != nil {
+		return nil, err
+	}
+	entryOffset, err := r.readEntryOffset()
+	if err != nil {
+		return nil, err
+	}
+	err = r.seekToOffset(entryOffset)
+	if err != nil {
+		return nil, err
+	}
+	return r.readEntry()
+}
+func (r *stReader) readEntryOffset() (int64, error) {
+	var entryOffset int64
+	err := binary.Read(r.filePtr, binary.LittleEndian, &entryOffset)
+	if err != nil {
+		return 0, err
+	}
+	return entryOffset, nil
+}
+func (r *stReader) readEntry() (*memtable.Entry, error) {
 	var err error
 	var entrySize int64
 	err = binary.Read(r.filePtr, binary.LittleEndian, &entrySize)

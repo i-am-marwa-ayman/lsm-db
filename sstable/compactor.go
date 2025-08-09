@@ -1,144 +1,144 @@
 package sstable
 
 import (
-	"mini-levelDB/memtable"
+	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 )
 
-// TODO: use seek
+// need refactor not readable at all
 func (st *sstable) Compact(first *sstable, second *sstable) error {
-	rFirst, err := first.newReader()
+	firstReader, err := first.newReader()
 	if err != nil {
 		return err
 	}
-	defer rFirst.closeReader()
-	err = rFirst.seekToOffset(8)
+	defer firstReader.closeReader()
+	secondReader, err := second.newReader()
 	if err != nil {
 		return err
 	}
-	rSecond, err := second.newReader()
-	if err != nil {
-		return err
-	}
-	defer rSecond.closeReader()
-	err = rSecond.seekToOffset(8)
-	if err != nil {
-		return err
-	}
+	defer secondReader.closeReader()
+
 	w, err := st.newWriter()
 	if err != nil {
 		return err
 	}
 	defer w.closeWriter()
 
-	err = w.writeMetaData(0)
+	firstIndx := 0
+	secondIndx := 0
+	var currentFirstEntry *memtable.Entry
+	currentFirstEntry, err = firstReader.readEntry()
 	if err != nil {
 		return err
 	}
-	ptr1 := 0
-	ptr2 := 0
-	var entry1 *memtable.Entry
-	entry1, err = rFirst.next()
+	var currentSecondEntry *memtable.Entry
+	currentSecondEntry, err = secondReader.readEntry()
 	if err != nil {
 		return err
 	}
-	var entry2 *memtable.Entry
-	entry2, err = rSecond.next()
-	if err != nil {
-		return err
-	}
+
 	newSize := 0
-	for ptr1 < first.size && ptr2 < second.size {
-		if entry1.Key == entry2.Key {
-			if !entry2.Tombstone {
-				err = w.writeNext(entry2)
+	newOffsets := make([]int64, 0)
+
+	for firstIndx < int(first.size) && secondIndx < int(second.size) {
+		if currentFirstEntry.Key == currentSecondEntry.Key {
+			if !currentSecondEntry.Tombstone {
+				offset, err := w.writeEntry(currentSecondEntry)
+				newOffsets = append(newOffsets, offset)
 				if err != nil {
 					return err
 				}
 				newSize++
 			}
-			ptr1++
-			if ptr1 < first.size {
-				entry1, err = rFirst.next()
+			firstIndx++
+			if firstIndx < int(first.size) {
+				currentFirstEntry, err = firstReader.readEntry()
 				if err != nil {
 					return err
 				}
 			}
-			ptr2++
-			if ptr2 < second.size {
-				entry2, err = rSecond.next()
+			secondIndx++
+			if secondIndx < int(second.size) {
+				currentSecondEntry, err = secondReader.readEntry()
 				if err != nil {
 					return err
 				}
 			}
-		} else if entry1.Key < entry2.Key {
-			if !entry1.Tombstone {
-				err = w.writeNext(entry1)
+		} else if currentFirstEntry.Key < currentSecondEntry.Key {
+			if !currentFirstEntry.Tombstone {
+				offset, err := w.writeEntry(currentFirstEntry)
+				newOffsets = append(newOffsets, offset)
 				if err != nil {
 					return err
 				}
 				newSize++
 			}
-			ptr1++
-			if ptr1 < first.size {
-				entry1, err = rFirst.next()
+			firstIndx++
+			if firstIndx < int(first.size) {
+				currentFirstEntry, err = firstReader.readEntry()
 				if err != nil {
 					return err
 				}
 			}
 		} else {
-			if !entry2.Tombstone {
-				err = w.writeNext(entry2)
+			if !currentSecondEntry.Tombstone {
+				offset, err := w.writeEntry(currentSecondEntry)
+				newOffsets = append(newOffsets, offset)
 				if err != nil {
 					return err
 				}
 				newSize++
 			}
-			ptr2++
-			if ptr2 < second.size {
-				entry2, err = rSecond.next()
+			secondIndx++
+			if secondIndx < int(second.size) {
+				currentSecondEntry, err = secondReader.readEntry()
 				if err != nil {
 					return err
 				}
 			}
 		}
 	}
-	for ptr1 < first.size {
-		if !entry1.Tombstone {
-			err = w.writeNext(entry1)
+	for firstIndx < int(first.size) {
+		if !currentFirstEntry.Tombstone {
+			offset, err := w.writeEntry(currentFirstEntry)
+			newOffsets = append(newOffsets, offset)
 			if err != nil {
 				return err
 			}
 			newSize++
 		}
-		ptr1++
-		if ptr1 < first.size {
-			entry1, err = rFirst.next()
+		firstIndx++
+		if firstIndx < int(first.size) {
+			currentFirstEntry, err = firstReader.readEntry()
 			if err != nil {
 				return err
 			}
 		}
 	}
-	for ptr2 < second.size {
-		if !entry2.Tombstone {
-			err = w.writeNext(entry2)
+
+	for secondIndx < int(second.size) {
+		if !currentSecondEntry.Tombstone {
+			offset, err := w.writeEntry(currentSecondEntry)
+			newOffsets = append(newOffsets, offset)
 			if err != nil {
 				return err
 			}
 			newSize++
 		}
-		ptr2++
-		if ptr2 < second.size {
-			entry2, err = rSecond.next()
+		secondIndx++
+		if secondIndx < int(second.size) {
+			currentSecondEntry, err = secondReader.readEntry()
 			if err != nil {
 				return err
 			}
 		}
 	}
-	err = w.seekToOffset(0)
+	st.size = int64(newSize)
+	st.offsetsStart, err = w.writeOffests(newOffsets)
 	if err != nil {
 		return err
 	}
-	st.size = newSize
-	err = w.writeMetaData(st.size)
+
+	err = w.writeMetaData(st.size, st.offsetsStart)
+
 	return err
 }

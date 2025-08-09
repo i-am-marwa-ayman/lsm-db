@@ -2,9 +2,9 @@ package engine
 
 import (
 	"fmt"
+	"github.com/i-am-marwa-ayman/lsm-db/memtable"
+	"github.com/i-am-marwa-ayman/lsm-db/sstable"
 	"log"
-	"mini-levelDB/memtable"
-	"mini-levelDB/sstable"
 )
 
 type Engine struct {

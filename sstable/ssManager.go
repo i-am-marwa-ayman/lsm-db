@@ -2,8 +2,8 @@ package sstable
 
 import (
 	"fmt"
+	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"log"
-	"mini-levelDB/memtable"
 )
 
 type SsManager struct {
@@ -25,6 +25,7 @@ func (sm *SsManager) AddSstable(entries []*memtable.Entry) error {
 	if err != nil {
 		return err
 	}
+	st.readSstable()
 	sm.sstables[0] = append(sm.sstables[0], st)
 	err = sm.fixLevels()
 	sm.listSstables()
@@ -37,6 +38,7 @@ func (sm *SsManager) listSstables() {
 		fmt.Printf("in level %d: %d sstabless\n", i, len(level))
 	}
 }
+
 func (sm *SsManager) fixLevels() error {
 	for i, level := range sm.sstables {
 		if len(level) == 2 {
@@ -69,7 +71,7 @@ func (sm *SsManager) Get(key string) *memtable.Entry {
 				fmt.Printf("key founded in sstable: %s\n", sstable.fileName)
 				return entry
 			} else if err != nil {
-				fmt.Printf("error happend in sstable %d.%d: %s", l, i, err)
+				fmt.Printf("error happend in sstable %d.%d: %s\n", l, i, err)
 			}
 		}
 	}

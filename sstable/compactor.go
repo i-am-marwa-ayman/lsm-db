@@ -5,7 +5,7 @@ import (
 )
 
 // need refactor not readable at all
-func (st *sstable) Compact(first *sstable, second *sstable) error {
+func (st *sstable) Compact(first *sstable, second *sstable, deleteZombie bool) error {
 	firstReader, err := first.newReader()
 	if err != nil {
 		return err
@@ -41,7 +41,7 @@ func (st *sstable) Compact(first *sstable, second *sstable) error {
 
 	for firstIndx < int(first.size) && secondIndx < int(second.size) {
 		if currentFirstEntry.Key == currentSecondEntry.Key {
-			if !currentSecondEntry.Tombstone {
+			if !currentSecondEntry.Tombstone || !deleteZombie {
 				offset, err := w.writeEntry(currentSecondEntry)
 				newOffsets = append(newOffsets, offset)
 				if err != nil {
@@ -64,7 +64,7 @@ func (st *sstable) Compact(first *sstable, second *sstable) error {
 				}
 			}
 		} else if currentFirstEntry.Key < currentSecondEntry.Key {
-			if !currentFirstEntry.Tombstone {
+			if !currentFirstEntry.Tombstone || !deleteZombie {
 				offset, err := w.writeEntry(currentFirstEntry)
 				newOffsets = append(newOffsets, offset)
 				if err != nil {
@@ -80,7 +80,7 @@ func (st *sstable) Compact(first *sstable, second *sstable) error {
 				}
 			}
 		} else {
-			if !currentSecondEntry.Tombstone {
+			if !currentSecondEntry.Tombstone || !deleteZombie {
 				offset, err := w.writeEntry(currentSecondEntry)
 				newOffsets = append(newOffsets, offset)
 				if err != nil {
@@ -98,7 +98,7 @@ func (st *sstable) Compact(first *sstable, second *sstable) error {
 		}
 	}
 	for firstIndx < int(first.size) {
-		if !currentFirstEntry.Tombstone {
+		if !currentFirstEntry.Tombstone || !deleteZombie {
 			offset, err := w.writeEntry(currentFirstEntry)
 			newOffsets = append(newOffsets, offset)
 			if err != nil {
@@ -116,7 +116,7 @@ func (st *sstable) Compact(first *sstable, second *sstable) error {
 	}
 
 	for secondIndx < int(second.size) {
-		if !currentSecondEntry.Tombstone {
+		if !currentSecondEntry.Tombstone || !deleteZombie {
 			offset, err := w.writeEntry(currentSecondEntry)
 			newOffsets = append(newOffsets, offset)
 			if err != nil {

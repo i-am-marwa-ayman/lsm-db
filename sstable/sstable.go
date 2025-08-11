@@ -2,8 +2,9 @@ package sstable
 
 import (
 	"fmt"
-	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"io"
+
+	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 )
 
 type sstable struct {
@@ -34,7 +35,6 @@ func (st *sstable) writeSstable(entries []*memtable.Entry) error {
 		return err
 	}
 	st.offsetsStart, err = w.writeOffests(offsets)
-	fmt.Println(st.offsetsStart)
 	if err != nil {
 		return err
 	}

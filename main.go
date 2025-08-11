@@ -2,11 +2,17 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/i-am-marwa-ayman/lsm-db/engine"
 )
 
 func main() {
-	db := engine.NewEngine()
+	db, err := engine.NewEngine("./data")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	db.Set("language", "python")
 	db.Set("framework", "django")
 	db.Set("database", "postgresql")
@@ -54,4 +60,5 @@ func main() {
 	} else {
 		fmt.Println(err)
 	}
+
 }

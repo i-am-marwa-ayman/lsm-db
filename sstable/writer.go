@@ -8,72 +8,109 @@ import (
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 )
 
-type stWriter struct {
-	filePtr *os.File
+const (
+	MAX_BLOCK_SIZE = 4 * 1024
+)
+
+type blockWriter struct {
+	filePtr        *os.File
+	data           []byte
+	indexBlocks    []*indexBlock
+	metadataOffset []int64 // for the footer
+	curIndex       *indexBlock
 }
 
-func (st *sstable) newWriter() (*stWriter, error) {
+func (st *sstable) newBlockWriter() (*blockWriter, error) {
 	file, err := os.OpenFile(st.fileName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
-	return &stWriter{
-		filePtr: file,
+	return &blockWriter{
+		filePtr:        file,
+		data:           make([]byte, 0),
+		indexBlocks:    make([]*indexBlock, 0),
+		metadataOffset: make([]int64, 0),
+		curIndex:       nil,
 	}, err
 }
 
-func (w *stWriter) seekToOffset(offset int64) error {
-	_, err := w.filePtr.Seek(offset, io.SeekStart)
-	return err
-}
-func (w *stWriter) writeMetaData(size int64, offsetPos int64) error {
-	err := binary.Write(w.filePtr, binary.LittleEndian, size)
+func (w *blockWriter) addEntry(entry *memtable.Entry) error {
+	if w.curIndex == nil {
+		w.curIndex = w.newIndexBlock()
+	}
+
+	rawEntry, err := entry.ToBytes()
 	if err != nil {
 		return err
 	}
-	err = binary.Write(w.filePtr, binary.LittleEndian, offsetPos)
-	return err
+	if len(rawEntry)+len(w.data) <= MAX_BLOCK_SIZE {
+		w.curIndex.addIndexEntry(len(w.data), entry.Key)
+		w.data = append(w.data, rawEntry...)
+	} else {
+		err = w.flushDataBlock()
+		if err != nil {
+			return err
+		}
+		w.curIndex = w.newIndexBlock()
+		w.addEntry(entry)
+	}
+	return nil
 }
-func (w *stWriter) writeOffests(Offests []int64) (int64, error) {
-	offsetsPos, err := w.filePtr.Seek(0, io.SeekCurrent)
+func (w *blockWriter) flushDataBlock() error {
+	w.curIndex.blockSize = int16(len(w.data))
+	w.indexBlocks = append(w.indexBlocks, w.curIndex)
+	w.curIndex = w.newIndexBlock()
+
+	if len(w.data) == 0 {
+		return nil
+	}
+	// fill data block
+	if len(w.data) < MAX_BLOCK_SIZE {
+		padding := make([]byte, MAX_BLOCK_SIZE-len(w.data))
+		w.data = append(w.data, padding...)
+	}
+	// write 4k data block
+	err := binary.Write(w.filePtr, binary.LittleEndian, w.data)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	for _, offset := range Offests {
-		err := binary.Write(w.filePtr, binary.LittleEndian, int64(offset))
-		if err != nil {
-			return 0, err
-		}
-	}
-	return offsetsPos, nil
+	w.data = make([]byte, 0)
+	return nil
 }
-func (w *stWriter) writeData(entries []*memtable.Entry) ([]int64, error) {
-	var err error = nil
-	offsets := make([]int64, len(entries))
-	for i, entry := range entries {
-		offsets[i], err = w.writeEntry(entry)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return offsets, nil
-}
-func (w *stWriter) writeEntry(entry *memtable.Entry) (int64, error) {
+
+func (w *blockWriter) writeIndexBlock(metadataBlock *indexBlock) error {
 	offset, err := w.filePtr.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	buf, err := entry.ToBytes()
+	rawMetadata, err := metadataBlock.toBytes()
 	if err != nil {
-		return 0, err
+		return err
 	}
-	err = binary.Write(w.filePtr, binary.LittleEndian, int64(len(buf)))
+	err = binary.Write(w.filePtr, binary.LittleEndian, rawMetadata)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	_, err = w.filePtr.Write(buf)
-	if err != nil {
-		return 0, err
-	}
-	return offset, nil
+	w.metadataOffset = append(w.metadataOffset, offset)
+	return nil
 }
-func (w *stWriter) closeWriter() {
+func (w *blockWriter) writeFooter() error {
+	for _, offset := range w.metadataOffset {
+		err := binary.Write(w.filePtr, binary.LittleEndian, offset)
+		if err != nil {
+			return err
+		}
+	}
+	err := binary.Write(w.filePtr, binary.LittleEndian, int64(len(w.metadataOffset)))
+	return err
+}
+func (w *blockWriter) flushMetadataBlocks() error {
+	for _, metadataBlock := range w.indexBlocks {
+		err := w.writeIndexBlock(metadataBlock)
+		if err != nil {
+			return err
+		}
+	}
+	err := w.writeFooter()
+	return err
+}
+func (w *blockWriter) close() {
 	w.filePtr.Close()
 }

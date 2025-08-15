@@ -16,7 +16,7 @@ type iterator struct {
 	curIndex    int
 }
 
-func (st *sstable) newIterator(indexBlocks []*indexBlock) (*iterator, error) {
+func (st *sstable) newIterator() (*iterator, error) {
 	file, err := os.Open(st.fileName)
 	if err != nil {
 		return nil, err
@@ -24,7 +24,7 @@ func (st *sstable) newIterator(indexBlocks []*indexBlock) (*iterator, error) {
 	return &iterator{
 		filePtr:     file,
 		entries:     nil,
-		indexBlocks: indexBlocks,
+		indexBlocks: st.indexBlocks,
 		curEntry:    0,
 		curIndex:    0,
 	}, nil
@@ -90,24 +90,19 @@ func (it *iterator) load() error {
 	return nil
 }
 
-func (it *iterator) valid() (bool, error) {
+func (it *iterator) next() (*memtable.Entry, error) {
 	if it.curEntry == len(it.entries) {
 		if it.curIndex == len(it.indexBlocks) {
-			return false, nil
-		} else {
-			err := it.load()
-			if err != nil {
-				return false, err
-			}
+			return nil, nil // if there is no return nil
+		}
+		err := it.load()
+		if err != nil {
+			return nil, err
 		}
 	}
-	return true, nil
-}
-
-func (it *iterator) next() *memtable.Entry {
 	entry := it.entries[it.curEntry]
 	it.curEntry++
-	return entry
+	return entry, nil
 }
 
 func (it *iterator) close() {

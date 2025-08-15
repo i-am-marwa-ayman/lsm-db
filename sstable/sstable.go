@@ -2,114 +2,119 @@ package sstable
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 )
 
 type sstable struct {
-	fileName     string
-	offsetsStart int64
-	size         int64
+	fileName    string
+	indexBlocks []*indexBlock
 }
 
 func newSstable(fileName string) *sstable {
 	return &sstable{
-		fileName:     fileName,
-		offsetsStart: 0,
-		size:         0,
+		fileName:    fileName,
+		indexBlocks: make([]*indexBlock, 0),
 	}
 }
-
-func (st *sstable) writeSstable(entries []*memtable.Entry) error {
-	w, err := st.newWriter()
-	if err != nil {
-		return err
-	}
-	defer w.closeWriter()
-
-	st.size = int64(len(entries))
-
-	offsets, err := w.writeData(entries)
-	if err != nil {
-		return err
-	}
-	st.offsetsStart, err = w.writeOffests(offsets)
-	if err != nil {
-		return err
-	}
-	err = w.writeMetaData(st.size, st.offsetsStart)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-func (st *sstable) loadSstable() ([]*memtable.Entry, error) {
-	r, err := st.newReader()
-	if err != nil {
-		return nil, err
-	}
-	defer r.closeReader()
-
-	entries := make([]*memtable.Entry, 0)
-	for i := 0; i < int(st.size); i++ {
-		entry, err := r.readEntry()
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry)
-	}
-	return entries, nil
-}
-
-// for test
 func (st *sstable) readSstable() error {
-	r, err := st.newReader()
+	for _, b := range st.indexBlocks {
+		fmt.Println(len(b.metadataEntries))
+	}
+	it, err := st.newIterator()
 	if err != nil {
 		return err
 	}
-	defer r.closeReader()
+	defer it.close()
 
-	for i := 0; i < int(st.size); i++ {
-		offset, err := r.filePtr.Seek(0, io.SeekCurrent)
+	for {
+		entry, err := it.next()
 		if err != nil {
-			return err
+			return nil
 		}
-		entry, err := r.readEntry()
-		if err != nil {
-			return err
+		if entry == nil {
+			break
 		}
-		fmt.Printf("key: %s, val: %s, deleted: %t, offset : %d\n", entry.Key, entry.Value, entry.Tombstone, offset)
+		fmt.Printf("key: %s, val: %s\n", entry.Key, entry.Value)
 	}
 	return nil
+}
+func (st *sstable) writeSstable(entries []*memtable.Entry) error {
+	w, err := st.newBlockWriter()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+
+	for _, ententry := range entries {
+		err = w.addEntry(ententry)
+		if err != nil {
+			return err
+		}
+	}
+	err = w.flushDataBlock() // make sure to flush every entry
+	if err != nil {
+		return err
+	}
+	err = w.flushMetadataBlocks()
+	if err != nil {
+		return err
+	}
+	st.indexBlocks = w.indexBlocks
+
+	return nil
+}
+func (st *sstable) getOffset(index int, key string) int16 {
+	indexBlock := st.indexBlocks[index]
+
+	low := 0
+	high := len(indexBlock.metadataEntries) - 1
+
+	for low <= high {
+		mid := (low + high) / 2
+		midIndexEntry := indexBlock.metadataEntries[mid]
+		if key == midIndexEntry.key {
+			return midIndexEntry.offset
+		} else if key < midIndexEntry.key {
+			high = mid - 1
+		} else {
+			low = mid + 1
+		}
+	}
+	return -1
+}
+func (st *sstable) getIndex(key string) int {
+	low := 0
+	high := len(st.indexBlocks) - 1
+
+	for low <= high {
+		mid := (low + high) / 2
+		midIndex := st.indexBlocks[mid]
+		if midIndex.metadataEntries[0].key <= key && key <= midIndex.metadataEntries[len(midIndex.metadataEntries)-1].key {
+			return mid
+		} else if key < midIndex.metadataEntries[0].key {
+			high = mid - 1
+		} else {
+			low = mid + 1
+		}
+	}
+	return -1
 }
 
 func (st *sstable) searchSstable(key string) (*memtable.Entry, error) {
-	r, err := st.newReader()
+	r, err := st.newBlockReader()
 	if err != nil {
 		return nil, err
 	}
-	defer r.closeReader()
-
-	low := 0
-	high := int(st.size) - 1
-	for low <= high {
-		mid := low + (high-low)/2
-		midOffset := int(st.offsetsStart) + mid*8
-		// fmt.Printf("index: %d, offset Pos:%d\n", mid, midOffset)
-		entry, err := r.readEntryAtOffset(int64(midOffset))
-		if err != nil {
-			return nil, err
-		}
-
-		if entry.Key == key {
-			return entry, nil
-		} else if entry.Key < key {
-			low = mid + 1
-		} else {
-			high = mid - 1
-		}
+	defer r.close()
+	// TODO: change to binary search
+	index := st.getIndex(key)
+	if index == -1 {
+		return nil, nil
 	}
-
-	return nil, nil
+	offset := st.getOffset(index, key)
+	if offset == -1 {
+		return nil, nil
+	}
+	return r.readEntryAtOffest(int64(index*MAX_BLOCK_SIZE + int(offset)))
 }

@@ -56,7 +56,7 @@ func (sm *SsManager) listSstables() {
 func (sm *SsManager) fixLevels() error {
 	for i, level := range sm.sstables {
 		if len(level) == 2 {
-			log.Printf("start compact level %d to level %d...", i, i+1)
+			log.Printf("start compact level %d to level %d...\n", i, i+1)
 			deleteZombie := false
 			if len(sm.sstables) == i+1 {
 				deleteZombie = true
@@ -64,17 +64,20 @@ func (sm *SsManager) fixLevels() error {
 				sm.sstables = append(sm.sstables, nlevel)
 			}
 			nst := newSstable(fmt.Sprintf("%s/%d.%d.data", sm.dataPath, i+1, len(sm.sstables[i+1])))
-			err := nst.Compact(level[0], level[1], deleteZombie)
+			err := nst.compact(level[0], level[1], deleteZombie)
 			if err != nil {
 				return err
 			}
-			// if newsstable if empty do not add it (all deleted)
 			// nst.readSstable()
-			if nst.size > 0 {
+			// if newsstable if empty do not add it (all deleted)
+			if len(nst.indexBlocks) > 0 {
 				sm.sstables[i+1] = append(sm.sstables[i+1], nst)
+				sm.sstables[i] = make([]*sstable, 0)
+			} else {
+				log.Println("delete sstable")
 			}
 			sm.sstables[i] = make([]*sstable, 0)
-			log.Printf("level %d compacted successfully", i)
+			log.Printf("level %d compacted successfully\n", i)
 		}
 	}
 	return nil
@@ -85,11 +88,11 @@ func (sm *SsManager) Get(key string) *memtable.Entry {
 			sstable := level[i]
 			if entry, err := sstable.searchSstable(key); entry != nil {
 				if !entry.Tombstone {
-					fmt.Printf("key founded in sstable: %s\n", sstable.fileName)
+					log.Printf("key founded in sstable: %s\n", sstable.fileName)
 				}
 				return entry
 			} else if err != nil {
-				fmt.Printf("error happend in sstable %d.%d: %s\n", l, i, err)
+				log.Printf("error happend in sstable %d.%d: %s\n", l, i, err)
 			}
 		}
 	}

@@ -54,13 +54,11 @@ func (w *blockWriter) addEntry(entry *memtable.Entry) error {
 	return nil
 }
 func (w *blockWriter) flushDataBlock() error {
-	w.curIndex.blockSize = int16(len(w.data))
-	w.indexBlocks = append(w.indexBlocks, w.curIndex)
-	w.curIndex = w.newIndexBlock()
-
 	if len(w.data) == 0 {
 		return nil
 	}
+	w.curIndex.blockSize = int16(len(w.data))
+	w.indexBlocks = append(w.indexBlocks, w.curIndex)
 	// fill data block
 	if len(w.data) < MAX_BLOCK_SIZE {
 		padding := make([]byte, MAX_BLOCK_SIZE-len(w.data))

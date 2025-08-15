@@ -1,144 +1,110 @@
 package sstable
 
 import (
-	"github.com/i-am-marwa-ayman/lsm-db/memtable"
+	"fmt"
 )
 
-// need refactor not readable at all
-func (st *sstable) Compact(first *sstable, second *sstable, deleteZombie bool) error {
-	firstReader, err := first.newReader()
+func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) error {
+	firstIterator, err := first.newIterator()
 	if err != nil {
 		return err
 	}
-	defer firstReader.closeReader()
-	secondReader, err := second.newReader()
+	defer firstIterator.close()
+	secondIterator, err := second.newIterator()
 	if err != nil {
 		return err
 	}
-	defer secondReader.closeReader()
+	defer secondIterator.close()
 
-	w, err := st.newWriter()
+	w, err := st.newBlockWriter()
 	if err != nil {
 		return err
 	}
-	defer w.closeWriter()
+	defer w.close()
 
-	firstIndx := 0
-	secondIndx := 0
-	var currentFirstEntry *memtable.Entry
-	currentFirstEntry, err = firstReader.readEntry()
+	currentFirstEntry, err := firstIterator.next()
 	if err != nil {
 		return err
 	}
-	var currentSecondEntry *memtable.Entry
-	currentSecondEntry, err = secondReader.readEntry()
+	currentSecondEntry, err := secondIterator.next()
 	if err != nil {
 		return err
 	}
 
-	newSize := 0
-	newOffsets := make([]int64, 0)
-
-	for firstIndx < int(first.size) && secondIndx < int(second.size) {
+	for currentFirstEntry != nil && currentSecondEntry != nil {
 		if currentFirstEntry.Key == currentSecondEntry.Key {
-			if !currentSecondEntry.Tombstone || !deleteZombie {
-				offset, err := w.writeEntry(currentSecondEntry)
-				newOffsets = append(newOffsets, offset)
+			if !(currentSecondEntry.Tombstone && deleteZombie) {
+				err = w.addEntry(currentSecondEntry)
 				if err != nil {
 					return err
 				}
-				newSize++
+				fmt.Println(currentSecondEntry.Key)
 			}
-			firstIndx++
-			if firstIndx < int(first.size) {
-				currentFirstEntry, err = firstReader.readEntry()
-				if err != nil {
-					return err
-				}
+			currentFirstEntry, err = firstIterator.next()
+			if err != nil {
+				return err
 			}
-			secondIndx++
-			if secondIndx < int(second.size) {
-				currentSecondEntry, err = secondReader.readEntry()
-				if err != nil {
-					return err
-				}
+			currentSecondEntry, err = secondIterator.next()
+			if err != nil {
+				return err
 			}
 		} else if currentFirstEntry.Key < currentSecondEntry.Key {
-			if !currentFirstEntry.Tombstone || !deleteZombie {
-				offset, err := w.writeEntry(currentFirstEntry)
-				newOffsets = append(newOffsets, offset)
+			if !(currentFirstEntry.Tombstone && deleteZombie) {
+				err = w.addEntry(currentFirstEntry)
 				if err != nil {
 					return err
 				}
-				newSize++
 			}
-			firstIndx++
-			if firstIndx < int(first.size) {
-				currentFirstEntry, err = firstReader.readEntry()
-				if err != nil {
-					return err
-				}
+			currentFirstEntry, err = firstIterator.next()
+			if err != nil {
+				return err
 			}
 		} else {
-			if !currentSecondEntry.Tombstone || !deleteZombie {
-				offset, err := w.writeEntry(currentSecondEntry)
-				newOffsets = append(newOffsets, offset)
+			if !(currentSecondEntry.Tombstone && deleteZombie) {
+				err = w.addEntry(currentSecondEntry)
 				if err != nil {
 					return err
 				}
-				newSize++
 			}
-			secondIndx++
-			if secondIndx < int(second.size) {
-				currentSecondEntry, err = secondReader.readEntry()
-				if err != nil {
-					return err
-				}
+			currentSecondEntry, err = secondIterator.next()
+			if err != nil {
+				return err
 			}
 		}
 	}
-	for firstIndx < int(first.size) {
-		if !currentFirstEntry.Tombstone || !deleteZombie {
-			offset, err := w.writeEntry(currentFirstEntry)
-			newOffsets = append(newOffsets, offset)
+	for currentFirstEntry != nil {
+		if !(currentFirstEntry.Tombstone && deleteZombie) {
+			err = w.addEntry(currentFirstEntry)
 			if err != nil {
 				return err
 			}
-			newSize++
 		}
-		firstIndx++
-		if firstIndx < int(first.size) {
-			currentFirstEntry, err = firstReader.readEntry()
+		currentFirstEntry, err = firstIterator.next()
+		if err != nil {
+			return err
+		}
+	}
+	for currentSecondEntry != nil {
+		if !(currentSecondEntry.Tombstone && deleteZombie) {
+			err = w.addEntry(currentSecondEntry)
 			if err != nil {
 				return err
 			}
+		}
+		currentSecondEntry, err = secondIterator.next()
+		if err != nil {
+			return err
 		}
 	}
 
-	for secondIndx < int(second.size) {
-		if !currentSecondEntry.Tombstone || !deleteZombie {
-			offset, err := w.writeEntry(currentSecondEntry)
-			newOffsets = append(newOffsets, offset)
-			if err != nil {
-				return err
-			}
-			newSize++
-		}
-		secondIndx++
-		if secondIndx < int(second.size) {
-			currentSecondEntry, err = secondReader.readEntry()
-			if err != nil {
-				return err
-			}
-		}
-	}
-	st.size = int64(newSize)
-	st.offsetsStart, err = w.writeOffests(newOffsets)
+	err = w.flushDataBlock()
 	if err != nil {
 		return err
 	}
-
-	err = w.writeMetaData(st.size, st.offsetsStart)
-
-	return err
+	err = w.flushMetadataBlocks()
+	if err != nil {
+		return err
+	}
+	st.indexBlocks = w.indexBlocks
+	return nil
 }

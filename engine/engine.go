@@ -36,7 +36,6 @@ func (db *Engine) Get(key string) (string, error) {
 
 	entry = db.sstableManager.Get(key)
 	if entry != nil && !entry.Tombstone {
-		fmt.Println(entry.Tombstone)
 		return entry.Value, nil
 	}
 

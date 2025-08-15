@@ -1,9 +1,5 @@
 package sstable
 
-import (
-	"fmt"
-)
-
 func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) error {
 	firstIterator, err := first.newIterator()
 	if err != nil {
@@ -38,7 +34,6 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 				if err != nil {
 					return err
 				}
-				fmt.Println(currentSecondEntry.Key)
 			}
 			currentFirstEntry, err = firstIterator.next()
 			if err != nil {

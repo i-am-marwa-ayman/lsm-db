@@ -22,48 +22,52 @@ Engine → MemTable (AVL Tree) → SSTable Manager
                             Level 0: [SSTable] [SSTable]
                             Level 1: [SSTable]
                             Level 2: [SSTable]
-```
 
+```
 ### SSTable File Structure
 
 ```
-┌─────────────────┐─────────────────┐─────────────────┐
-|                 |                 |                 |
-│  data block     │    data block   │    data block   │
-│                 │                 │                 │
-├─────────────────┼─────────────────┼─────────────────┤      
-│                 |                 |                 |
-|    data block   │   data block    │   data block    │           
-│                 │                 │                 │               
-├─────────────────┼─────────────────┼─────────────────┤             
-│  index block    │  index block    │  index block    │ 
-├─────────────────┼─────────────────┼─────────────────┤            
-│  index block    │  index block    │  index block    │   
-├─────────────────┘─────────────────┘─────────────────┤        
-│                    footer                           │               
+┌─────────────────┬─────────────────┬─────────────────┐
+│   data block    │   data block    │   data block    │
+├─────────────────┼─────────────────┼─────────────────┤
+│   data block    │   data block    │   data block    │
+├─────────────────┼─────────────────┼─────────────────┤
+│  index block    │  index block    │  index block    │
+├─────────────────┼─────────────────┼─────────────────┤
+│  index block    │  index block    │  index block    │
+├─────────────────┴─────────────────┴─────────────────┤
+│                    footer                           │
 └─────────────────────────────────────────────────────┘
+```
 
-Data Block Structure (fixed size 4K):
-┌────────┐────────┐────────┐────────┐────────┐
-│ entry1 | entry2 | entry3 | entry4 | entryN |          
-└────────┘────────┘─────────────────┘────────┘
+#### Data Block Structure (fixed size 4K)
+```
+┌────────┬────────┬────────┬────────┬────────┐
+│ entry1 │ entry2 │ entry3 │ entry4 │ entryN │
+└────────┴────────┴────────┴────────┴────────┘
+```
 
-Entry Structure (variable size)
-┌─────────┐───────┐─────────┐───────┐───────────┐─────────┐
-│ key len |  key  | val len |  val  | timestamp | deleted |    
-└─────────┘───────┘─────────┘───────┘───────────┘─────────┘
+#### Entry Structure (variable size)
+```
+┌─────────┬───────┬─────────┬───────┬───────────┬─────────┐
+│ key len │  key  │ val len │  val  │ timestamp │ deleted │
+└─────────┴───────┴─────────┴───────┴───────────┴─────────┘
+```
 
-Index Block Structure (variable size):
-┌───────────────────────────────────────────────────────────────┐
-│  block size, entry count                                      │
-│  offset1, key1, offset2, key2, offset3, key3, offsetN, keyN   │
-└───────────────────────────────────────────────────────────────┘
+#### Index Block Structure (variable size)
+```
+┌─────────────────────────────────────────────────────────────┐
+│  block size, entry count                                    │
+│  offset1, key1, offset2, key2, offset3, key3, offsetN, keyN │
+└─────────────────────────────────────────────────────────────┘
+```
 
-Footer Structure (variable size):
-┌───────────────────────────────────────────────────────────────┐
-│  index1 offset, index2 offset, index3 offset,                 │
-│  indexN offset, blockCount                                    │
-└───────────────────────────────────────────────────────────────┘
+#### Footer Structure (variable size)
+```
+┌─────────────────────────────────────────────────────────────┐
+│  index1 offset, index2 offset, index3 offset,               │
+│  indexN offset, blockCount                                  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 
@@ -90,6 +94,14 @@ go run main.go
 - [ ] **Range Queries**: Iterator support for key ranges
 - [ ] **Concurrency**: Thread-safe operations
 
+
+## Feedback
+
+This is an educational project built to understand LSM-tree internals. If you find any issues, have suggestions for improvements, or want to discuss the implementation:
+- Open an issue on GitHub
+- Reach out via email or my [x](https://x.com/_Marwa_Ayman_) account
+
 ---
 
 *Educational project to understand LSM-tree databases like LevelDB, RocksDB, and Cassandra.*
+

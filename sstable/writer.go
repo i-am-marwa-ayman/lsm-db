@@ -41,8 +41,16 @@ func (w *blockWriter) addEntry(entry *memtable.Entry) error {
 		return err
 	}
 	if len(rawEntry)+len(w.data) <= MAX_BLOCK_SIZE {
-		w.curIndex.addIndexEntry(len(w.data), entry.Key)
+		if w.curIndex.blockEntriesCount%10 == 0 {
+			if w.curIndex.blockEntriesCount == 0 {
+				w.curIndex.minKey = entry.Key
+			} else {
+				w.curIndex.addIndexEntry(int32(len(w.data)), entry.Key)
+			}
+		}
+		w.curIndex.maxKey = entry.Key // always update maxkey
 		w.data = append(w.data, rawEntry...)
+		w.curIndex.blockEntriesCount++
 	} else {
 		err = w.flushDataBlock()
 		if err != nil {
@@ -57,7 +65,7 @@ func (w *blockWriter) flushDataBlock() error {
 	if len(w.data) == 0 {
 		return nil
 	}
-	w.curIndex.blockSize = int16(len(w.data))
+	w.curIndex.blockSize = int32(len(w.data))
 	w.indexBlocks = append(w.indexBlocks, w.curIndex)
 	// fill data block
 	if len(w.data) < MAX_BLOCK_SIZE {

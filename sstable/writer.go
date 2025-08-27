@@ -6,10 +6,7 @@ import (
 	"os"
 
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
-)
-
-const (
-	MAX_BLOCK_SIZE = 4 * 1024
+	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
 type blockWriter struct {
@@ -18,6 +15,7 @@ type blockWriter struct {
 	indexBlocks    []*indexBlock
 	metadataOffset []int64 // for the footer
 	curIndex       *indexBlock
+	cfg            *shared.Config
 }
 
 func (st *sstable) newBlockWriter() (*blockWriter, error) {
@@ -28,6 +26,7 @@ func (st *sstable) newBlockWriter() (*blockWriter, error) {
 		indexBlocks:    make([]*indexBlock, 0),
 		metadataOffset: make([]int64, 0),
 		curIndex:       nil,
+		cfg:            st.cfg,
 	}, err
 }
 
@@ -40,8 +39,8 @@ func (w *blockWriter) addEntry(entry *memtable.Entry) error {
 	if err != nil {
 		return err
 	}
-	if len(rawEntry)+len(w.data) <= MAX_BLOCK_SIZE {
-		if w.curIndex.blockEntriesCount%10 == 0 {
+	if len(rawEntry)+len(w.data) <= int(w.cfg.MAX_IN_DISK_PAGE_SIZE) {
+		if w.curIndex.blockEntriesCount%w.cfg.SPARSE_INDEX_INTERVAL == 0 {
 			if w.curIndex.blockEntriesCount == 0 {
 				w.curIndex.minKey = entry.Key
 			} else {
@@ -68,8 +67,8 @@ func (w *blockWriter) flushDataBlock() error {
 	w.curIndex.blockSize = int32(len(w.data))
 	w.indexBlocks = append(w.indexBlocks, w.curIndex)
 	// fill data block
-	if len(w.data) < MAX_BLOCK_SIZE {
-		padding := make([]byte, MAX_BLOCK_SIZE-len(w.data))
+	if len(w.data) < int(w.cfg.MAX_IN_DISK_PAGE_SIZE) {
+		padding := make([]byte, int(w.cfg.MAX_IN_DISK_PAGE_SIZE)-len(w.data))
 		w.data = append(w.data, padding...)
 	}
 	// write 4k data block

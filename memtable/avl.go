@@ -72,7 +72,7 @@ func balance(node *AVL) *AVL {
 }
 
 func (avl *AVL) Insert(key []byte, val *Entry) (*AVL, int) {
-	newAdd := 1
+	newAdd := val.size()
 	if avl == nil {
 		avl = NewAVL(key, val)
 	}

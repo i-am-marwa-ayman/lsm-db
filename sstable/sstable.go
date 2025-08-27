@@ -5,17 +5,20 @@ import (
 	"fmt"
 
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
+	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
 type sstable struct {
 	fileName    string
 	indexBlocks []*indexBlock
+	cfg         *shared.Config
 }
 
-func newSstable(fileName string) *sstable {
+func (sm *SsManager) newSstable(fileName string) *sstable {
 	return &sstable{
 		fileName:    fileName,
 		indexBlocks: make([]*indexBlock, 0),
+		cfg:         sm.cfg,
 	}
 }
 func (st *sstable) readSstable() error {
@@ -70,19 +73,19 @@ func (st *sstable) searchIndex(index int, key []byte) (startOffset int64, size i
 	indexBlock := st.indexBlocks[index]
 	// block entries than SPARSE_INDEX_INTERVAL
 	if len(indexBlock.metadataEntries) == 0 {
-		return int64(index * MAX_BLOCK_SIZE), indexBlock.blockSize
+		return int64(index * int(st.cfg.MAX_IN_DISK_PAGE_SIZE)), indexBlock.blockSize
 	}
 	// key within first entries
 
 	if bytes.Compare(indexBlock.minKey, key) <= 0 && bytes.Compare(key, indexBlock.metadataEntries[0].key) < 0 {
-		startOffset := int64(index * MAX_BLOCK_SIZE)
+		startOffset := int64(index * int(st.cfg.MAX_IN_DISK_PAGE_SIZE))
 		size := indexBlock.metadataEntries[0].offset
 		return startOffset, size
 	}
 	// key within last entries
 	lastIndexEntry := indexBlock.metadataEntries[len(indexBlock.metadataEntries)-1]
 	if bytes.Compare(lastIndexEntry.key, key) <= 0 && bytes.Compare(key, indexBlock.maxKey) <= 0 {
-		startOffset := int64(lastIndexEntry.offset) + int64(index*MAX_BLOCK_SIZE)
+		startOffset := int64(lastIndexEntry.offset) + int64(index*int(st.cfg.MAX_IN_DISK_PAGE_SIZE))
 		size := indexBlock.blockSize - lastIndexEntry.offset
 		return startOffset, size
 	}
@@ -95,7 +98,7 @@ func (st *sstable) searchIndex(index int, key []byte) (startOffset int64, size i
 		beforeMid := indexBlock.metadataEntries[mid-1]
 
 		if bytes.Compare(beforeMid.key, key) <= 0 && bytes.Compare(key, midIndex.key) < 0 {
-			return int64(beforeMid.offset) + int64(MAX_BLOCK_SIZE*index), midIndex.offset - beforeMid.offset
+			return int64(beforeMid.offset) + int64(index*int(st.cfg.MAX_IN_DISK_PAGE_SIZE)), midIndex.offset - beforeMid.offset
 		} else if bytes.Compare(key, midIndex.key) < 0 {
 			high = mid - 1
 		} else {
@@ -103,7 +106,7 @@ func (st *sstable) searchIndex(index int, key []byte) (startOffset int64, size i
 		}
 	}
 	// this is will not happen
-	return int64(index * MAX_BLOCK_SIZE), indexBlock.blockSize
+	return int64(index * int(st.cfg.MAX_IN_DISK_PAGE_SIZE)), indexBlock.blockSize
 }
 
 // get which data block have target key by searching its indexblock min and max

@@ -6,11 +6,12 @@ import (
 	"os"
 
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
+	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
 type SsManager struct {
 	sstables [][]*sstable
-	dataPath string
+	cfg      *shared.Config
 }
 
 func creatPath(dataPath string) error {
@@ -19,22 +20,19 @@ func creatPath(dataPath string) error {
 	}
 	return nil
 }
-func NewSsManager(dataPath string) (*SsManager, error) {
-	err := creatPath(dataPath)
-	if err != nil {
-		return nil, err
-	}
+func NewSsManager(cfg *shared.Config) (*SsManager, error) {
 	sst := make([][]*sstable, 3)
 	for i := range sst {
 		sst[i] = make([]*sstable, 0)
 	}
+	err := creatPath(cfg.DATA_PATH)
 	return &SsManager{
 		sstables: sst,
-		dataPath: dataPath,
-	}, nil
+		cfg:      cfg,
+	}, err
 }
 func (sm *SsManager) AddSstable(entries []*memtable.Entry) error {
-	st := newSstable(fmt.Sprintf("%s/0.%d.data", sm.dataPath, len(sm.sstables[0])))
+	st := sm.newSstable(fmt.Sprintf("%s/0.%d.data", sm.cfg.DATA_PATH, len(sm.sstables[0])))
 	err := st.writeSstable(entries)
 	if err != nil {
 		return err
@@ -63,7 +61,7 @@ func (sm *SsManager) fixLevels() error {
 				nlevel := make([]*sstable, 0)
 				sm.sstables = append(sm.sstables, nlevel)
 			}
-			nst := newSstable(fmt.Sprintf("%s/%d.%d.data", sm.dataPath, i+1, len(sm.sstables[i+1])))
+			nst := sm.newSstable(fmt.Sprintf("%s/%d.%d.data", sm.cfg.DATA_PATH, i+1, len(sm.sstables[i+1])))
 			err := nst.compact(level[0], level[1], deleteZombie)
 			if err != nil {
 				return err

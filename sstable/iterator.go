@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
+	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
 type iterator struct {
@@ -15,6 +16,7 @@ type iterator struct {
 	indexBlocks []*indexBlock
 	curEntry    int
 	curIndex    int
+	cfg         *shared.Config
 }
 
 func (st *sstable) newIterator() (*iterator, error) {
@@ -28,6 +30,7 @@ func (st *sstable) newIterator() (*iterator, error) {
 		indexBlocks: st.indexBlocks,
 		curEntry:    0,
 		curIndex:    0,
+		cfg:         st.cfg,
 	}, nil
 }
 func (it *iterator) decodeEntry(buf *bytes.Buffer) (*memtable.Entry, error) {
@@ -105,7 +108,7 @@ func (it *iterator) seekAndSearchKey(target []byte, start int64, size int32) (*m
 	return nil, nil
 }
 func (it *iterator) load() error {
-	data := make([]byte, MAX_BLOCK_SIZE)
+	data := make([]byte, it.cfg.MAX_IN_DISK_PAGE_SIZE)
 	err := binary.Read(it.filePtr, binary.LittleEndian, data)
 	if err != nil {
 		return err

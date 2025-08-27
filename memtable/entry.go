@@ -57,3 +57,8 @@ func (entry *Entry) ToBytes() ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// entry size in disk
+func (entry *Entry) size() int {
+	return (8 + 8 + len(entry.Key) + len(entry.Value) + 8 + 1)
+}

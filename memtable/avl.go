@@ -1,16 +1,19 @@
 package memtable
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 type AVL struct {
-	key    string
+	key    []byte
 	val    *Entry
 	height int
 	right  *AVL
 	left   *AVL
 }
 
-func NewAVL(key string, val *Entry) *AVL {
+func NewAVL(key []byte, val *Entry) *AVL {
 	return &AVL{
 		key:    key,
 		val:    val,
@@ -68,15 +71,15 @@ func balance(node *AVL) *AVL {
 	return node
 }
 
-func (avl *AVL) Insert(key string, val *Entry) (*AVL, int) {
+func (avl *AVL) Insert(key []byte, val *Entry) (*AVL, int) {
 	newAdd := 1
 	if avl == nil {
 		avl = NewAVL(key, val)
 	}
-	if key == avl.key {
+	if bytes.Equal(key, avl.key) {
 		avl.val = val
 		newAdd = 0
-	} else if key < avl.key {
+	} else if bytes.Compare(key, avl.key) < 0 {
 		if avl.left == nil {
 			avl.left = NewAVL(key, val)
 		} else {
@@ -93,13 +96,13 @@ func (avl *AVL) Insert(key string, val *Entry) (*AVL, int) {
 	return balance(avl), newAdd
 }
 
-func (avl *AVL) LookUp(key string) *Entry {
+func (avl *AVL) LookUp(key []byte) *Entry {
 	if avl == nil {
 		return nil
 	}
-	if key == avl.key {
+	if bytes.Equal(key, avl.key) {
 		return avl.val
-	} else if key < avl.key {
+	} else if bytes.Compare(key, avl.key) < 0 {
 		return avl.left.LookUp(key)
 	} else {
 		return avl.right.LookUp(key)

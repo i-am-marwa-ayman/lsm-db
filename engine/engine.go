@@ -25,25 +25,25 @@ func NewEngine(DataPath string) (*Engine, error) {
 }
 
 func (db *Engine) Get(key string) (string, error) {
-	entry := db.memtable.Get(key)
+	entry := db.memtable.Get([]byte(key))
 	if entry != nil {
 		if !entry.Tombstone {
-			return entry.Value, nil
+			return string(entry.Value), nil
 		} else {
 			return "", fmt.Errorf("key does not exist")
 		}
 	}
 
-	entry = db.sstableManager.Get(key)
+	entry = db.sstableManager.Get([]byte(key))
 	if entry != nil && !entry.Tombstone {
-		return entry.Value, nil
+		return string(entry.Value), nil
 	}
 
 	return "", fmt.Errorf("key does not exist")
 }
 
 func (db *Engine) Set(key string, val string) error {
-	db.memtable.Set(key, val)
+	db.memtable.Set([]byte(key), []byte(val))
 	log.Printf("key %s is inserted\n", key)
 	if db.memtable.IsFull() {
 		log.Println("full table")
@@ -58,7 +58,7 @@ func (db *Engine) Set(key string, val string) error {
 }
 
 func (db *Engine) Delete(key string) error {
-	db.memtable.Delete(key)
+	db.memtable.Delete([]byte(key))
 	log.Printf("key %s is deleted\n", key)
 	if db.memtable.IsFull() {
 		log.Println("full table")

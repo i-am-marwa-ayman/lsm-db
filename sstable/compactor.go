@@ -1,5 +1,7 @@
 package sstable
 
+import "bytes"
+
 func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) error {
 	firstIterator, err := first.newIterator()
 	if err != nil {
@@ -28,7 +30,7 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 	}
 
 	for currentFirstEntry != nil && currentSecondEntry != nil {
-		if currentFirstEntry.Key == currentSecondEntry.Key {
+		if bytes.Equal(currentFirstEntry.Key, currentSecondEntry.Key) {
 			if !(currentSecondEntry.Tombstone && deleteZombie) {
 				err = w.addEntry(currentSecondEntry)
 				if err != nil {
@@ -43,7 +45,7 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 			if err != nil {
 				return err
 			}
-		} else if currentFirstEntry.Key < currentSecondEntry.Key {
+		} else if bytes.Compare(currentFirstEntry.Key, currentSecondEntry.Key) < 0 {
 			if !(currentFirstEntry.Tombstone && deleteZombie) {
 				err = w.addEntry(currentFirstEntry)
 				if err != nil {

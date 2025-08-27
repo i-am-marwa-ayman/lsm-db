@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
@@ -65,21 +66,22 @@ func (st *sstable) writeSstable(entries []*memtable.Entry) error {
 }
 
 // get data window between two index to search target
-func (st *sstable) searchIndex(index int, key string) (startOffset int64, size int32) {
+func (st *sstable) searchIndex(index int, key []byte) (startOffset int64, size int32) {
 	indexBlock := st.indexBlocks[index]
 	// block entries than SPARSE_INDEX_INTERVAL
 	if len(indexBlock.metadataEntries) == 0 {
 		return int64(index * MAX_BLOCK_SIZE), indexBlock.blockSize
 	}
 	// key within first entries
-	if indexBlock.minKey <= key && key < indexBlock.metadataEntries[0].key {
+
+	if bytes.Compare(indexBlock.minKey, key) <= 0 && bytes.Compare(key, indexBlock.metadataEntries[0].key) < 0 {
 		startOffset := int64(index * MAX_BLOCK_SIZE)
 		size := indexBlock.metadataEntries[0].offset
 		return startOffset, size
 	}
 	// key within last entries
 	lastIndexEntry := indexBlock.metadataEntries[len(indexBlock.metadataEntries)-1]
-	if lastIndexEntry.key <= key && key <= indexBlock.maxKey {
+	if bytes.Compare(lastIndexEntry.key, key) <= 0 && bytes.Compare(key, indexBlock.maxKey) <= 0 {
 		startOffset := int64(lastIndexEntry.offset) + int64(index*MAX_BLOCK_SIZE)
 		size := indexBlock.blockSize - lastIndexEntry.offset
 		return startOffset, size
@@ -92,9 +94,9 @@ func (st *sstable) searchIndex(index int, key string) (startOffset int64, size i
 		midIndex := indexBlock.metadataEntries[mid]
 		beforeMid := indexBlock.metadataEntries[mid-1]
 
-		if beforeMid.key <= key && key < midIndex.key {
+		if bytes.Compare(beforeMid.key, key) <= 0 && bytes.Compare(key, midIndex.key) < 0 {
 			return int64(beforeMid.offset) + int64(MAX_BLOCK_SIZE*index), midIndex.offset - beforeMid.offset
-		} else if key < midIndex.key {
+		} else if bytes.Compare(key, midIndex.key) < 0 {
 			high = mid - 1
 		} else {
 			low = mid + 1
@@ -105,16 +107,16 @@ func (st *sstable) searchIndex(index int, key string) (startOffset int64, size i
 }
 
 // get which data block have target key by searching its indexblock min and max
-func (st *sstable) searchBlock(key string) int {
+func (st *sstable) searchBlock(key []byte) int {
 	low := 0
 	high := len(st.indexBlocks) - 1
 
 	for low <= high {
 		mid := (low + high) / 2
 		midIndex := st.indexBlocks[mid]
-		if midIndex.minKey <= key && key <= midIndex.maxKey {
+		if bytes.Compare(midIndex.minKey, key) <= 0 && bytes.Compare(key, midIndex.maxKey) <= 0 {
 			return mid
-		} else if key < midIndex.minKey {
+		} else if bytes.Compare(key, midIndex.minKey) < 0 {
 			high = mid - 1
 		} else {
 			low = mid + 1
@@ -123,7 +125,7 @@ func (st *sstable) searchBlock(key string) int {
 	return -1
 }
 
-func (st *sstable) searchSstable(key string) (*memtable.Entry, error) {
+func (st *sstable) searchSstable(key []byte) (*memtable.Entry, error) {
 	index := st.searchBlock(key)
 	if index == -1 {
 		return nil, nil

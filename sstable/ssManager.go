@@ -82,7 +82,7 @@ func (sm *SsManager) fixLevels() error {
 	}
 	return nil
 }
-func (sm *SsManager) Get(key string) *memtable.Entry {
+func (sm *SsManager) Get(key []byte) *memtable.Entry {
 	for l, level := range sm.sstables {
 		for i := len(level) - 1; i >= 0; i-- {
 			sstable := level[i]

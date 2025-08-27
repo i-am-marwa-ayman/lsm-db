@@ -63,8 +63,8 @@ func (it *iterator) decodeEntry(buf *bytes.Buffer) (*memtable.Entry, error) {
 		return nil, err
 	}
 	return &memtable.Entry{
-		Key:       string(key),
-		Value:     string(val),
+		Key:       key,
+		Value:     val,
 		Timestamp: time,
 		Tombstone: deleted,
 	}, nil
@@ -82,7 +82,7 @@ func (it *iterator) decodeBlock(data []byte) error {
 	}
 	return nil
 }
-func (it *iterator) seekAndSearchKey(target string, start int64, size int32) (*memtable.Entry, error) {
+func (it *iterator) seekAndSearchKey(target []byte, start int64, size int32) (*memtable.Entry, error) {
 	_, err := it.filePtr.Seek(start, io.SeekStart)
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func (it *iterator) seekAndSearchKey(target string, start int64, size int32) (*m
 		if err != nil {
 			return nil, err
 		}
-		if entry.Key == target {
+		if bytes.Equal(entry.Key, target) {
 			return entry, nil
 		}
 	}

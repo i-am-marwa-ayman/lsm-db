@@ -10,23 +10,23 @@ func NewMemtable() *MemTable {
 	return &MemTable{
 		root:    nil,
 		size:    0,
-		maxSize: 10, // will change just for test
+		maxSize: 500, // will change just for test
 	}
 }
 func (mt *MemTable) IsFull() bool {
 	return mt.maxSize == mt.size
 }
-func (mt *MemTable) Get(key string) *Entry {
+func (mt *MemTable) Get(key []byte) *Entry {
 	entry := mt.root.LookUp(key)
 	return entry
 }
-func (mt *MemTable) Set(key string, val string) {
+func (mt *MemTable) Set(key []byte, val []byte) {
 	nEntry := NewEntry(key, val)
 	newAdd := 0
 	mt.root, newAdd = mt.root.Insert(key, nEntry)
-	mt.size += newAdd // will add one if we update existing val in memtable
+	mt.size += newAdd // will add one if we update non-existing val in memtable
 }
-func (mt *MemTable) Delete(key string) {
+func (mt *MemTable) Delete(key []byte) {
 	nEntry := DeletedEntry(key)
 	newAdd := 0
 	mt.root, newAdd = mt.root.Insert(key, nEntry)

@@ -18,7 +18,7 @@ func NewEntry(key []byte, val []byte) *Entry {
 		Key:       key,
 		Value:     val,
 		Tombstone: false,
-		Timestamp: int64(time.Now().Unix()),
+		Timestamp: time.Now().UnixMilli(),
 	}
 }
 func DeletedEntry(key []byte) *Entry {
@@ -26,7 +26,7 @@ func DeletedEntry(key []byte) *Entry {
 		Key:       key,
 		Value:     make([]byte, 0),
 		Tombstone: true,
-		Timestamp: int64(time.Now().Unix()),
+		Timestamp: time.Now().UnixMilli(),
 	}
 }
 func (entry *Entry) ToBytes() ([]byte, error) {

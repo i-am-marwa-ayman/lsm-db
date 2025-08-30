@@ -1,18 +1,25 @@
 package sstable
 
-import "bytes"
+import (
+	"bytes"
+)
 
 func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) error {
-	firstIterator, err := first.newIterator()
-	if err != nil {
-		return err
-	}
+	firstIterator := first.it
 	defer firstIterator.close()
-	secondIterator, err := second.newIterator()
+
+	err := firstIterator.seekStart()
 	if err != nil {
 		return err
 	}
+
+	secondIterator := second.it
 	defer secondIterator.close()
+
+	err = secondIterator.seekStart()
+	if err != nil {
+		return err
+	}
 
 	w, err := st.newBlockWriter()
 	if err != nil {
@@ -36,6 +43,7 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 				if err != nil {
 					return err
 				}
+				st.size++
 			}
 			currentFirstEntry, err = firstIterator.next()
 			if err != nil {
@@ -51,6 +59,7 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 				if err != nil {
 					return err
 				}
+				st.size++
 			}
 			currentFirstEntry, err = firstIterator.next()
 			if err != nil {
@@ -62,6 +71,7 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 				if err != nil {
 					return err
 				}
+				st.size++
 			}
 			currentSecondEntry, err = secondIterator.next()
 			if err != nil {
@@ -75,6 +85,7 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 			if err != nil {
 				return err
 			}
+			st.size++
 		}
 		currentFirstEntry, err = firstIterator.next()
 		if err != nil {
@@ -87,6 +98,7 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 			if err != nil {
 				return err
 			}
+			st.size++
 		}
 		currentSecondEntry, err = secondIterator.next()
 		if err != nil {

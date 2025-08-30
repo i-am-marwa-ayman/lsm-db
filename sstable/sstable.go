@@ -2,7 +2,6 @@ package sstable
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
@@ -11,7 +10,9 @@ import (
 type sstable struct {
 	fileName    string
 	indexBlocks []*indexBlock
+	size        int
 	cfg         *shared.Config
+	it          *iterator
 }
 
 func (sm *SsManager) newSstable(fileName string) *sstable {
@@ -19,29 +20,8 @@ func (sm *SsManager) newSstable(fileName string) *sstable {
 		fileName:    fileName,
 		indexBlocks: make([]*indexBlock, 0),
 		cfg:         sm.cfg,
+		it:          nil,
 	}
-}
-func (st *sstable) readSstable() error {
-	for _, b := range st.indexBlocks {
-		fmt.Println(len(b.metadataEntries))
-	}
-	it, err := st.newIterator()
-	if err != nil {
-		return err
-	}
-	defer it.close()
-
-	for {
-		entry, err := it.next()
-		if err != nil {
-			return nil
-		}
-		if entry == nil {
-			break
-		}
-		fmt.Printf("key: %s, val: %s\n", entry.Key, entry.Value)
-	}
-	return nil
 }
 func (st *sstable) writeSstable(entries []*memtable.Entry) error {
 	w, err := st.newBlockWriter()
@@ -50,6 +30,7 @@ func (st *sstable) writeSstable(entries []*memtable.Entry) error {
 	}
 	defer w.close()
 
+	st.size = len(entries)
 	for _, entry := range entries {
 		err = w.addEntry(entry)
 		if err != nil {
@@ -133,12 +114,6 @@ func (st *sstable) searchSstable(key []byte) (*memtable.Entry, error) {
 	if index == -1 {
 		return nil, nil
 	}
-	it, err := st.newIterator()
-	if err != nil {
-		return nil, err
-	}
-	defer it.close()
-
 	startOffset, size := st.searchIndex(index, key)
-	return it.seekAndSearchKey(key, startOffset, size)
+	return st.it.seekAndSearchKey(key, startOffset, size)
 }

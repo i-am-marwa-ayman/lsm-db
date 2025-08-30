@@ -31,9 +31,21 @@ func NewSsManager(cfg *shared.Config) (*SsManager, error) {
 		cfg:      cfg,
 	}, err
 }
+
+func (sm *SsManager) Close() {
+	for _, level := range sm.sstables {
+		for _, st := range level {
+			st.it.close()
+		}
+	}
+}
 func (sm *SsManager) AddSstable(entries []*memtable.Entry) error {
 	st := sm.newSstable(fmt.Sprintf("%s/0.%d.data", sm.cfg.DATA_PATH, len(sm.sstables[0])))
 	err := st.writeSstable(entries)
+	if err != nil {
+		return err
+	}
+	st.it, err = st.newIterator()
 	if err != nil {
 		return err
 	}
@@ -68,9 +80,13 @@ func (sm *SsManager) fixLevels() error {
 			}
 			// nst.readSstable()
 			// if newsstable if empty do not add it (all deleted)
-			if len(nst.indexBlocks) > 0 {
+			if nst.size > 0 {
 				sm.sstables[i+1] = append(sm.sstables[i+1], nst)
 				sm.sstables[i] = make([]*sstable, 0)
+				nst.it, err = nst.newIterator()
+				if err != nil {
+					return err
+				}
 			} else {
 				log.Println("delete sstable")
 			}
@@ -80,6 +96,7 @@ func (sm *SsManager) fixLevels() error {
 	}
 	return nil
 }
+
 func (sm *SsManager) Get(key []byte) *memtable.Entry {
 	for l, level := range sm.sstables {
 		for i := len(level) - 1; i >= 0; i-- {

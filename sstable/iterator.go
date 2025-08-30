@@ -33,6 +33,13 @@ func (st *sstable) newIterator() (*iterator, error) {
 		cfg:         st.cfg,
 	}, nil
 }
+func (it *iterator) seekStart() error {
+	_, err := it.filePtr.Seek(0, io.SeekStart)
+	it.entries = nil
+	it.curEntry = 0
+	it.curIndex = 0
+	return err
+}
 func (it *iterator) decodeEntry(buf *bytes.Buffer) (*memtable.Entry, error) {
 	var keyLen int64
 	err := binary.Read(buf, binary.LittleEndian, &keyLen)

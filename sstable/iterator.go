@@ -33,12 +33,103 @@ func (st *sstable) newIterator() (*iterator, error) {
 		cfg:         st.cfg,
 	}, nil
 }
+
+// to read data from the start
 func (it *iterator) seekStart() error {
 	_, err := it.filePtr.Seek(0, io.SeekStart)
 	it.entries = nil
 	it.curEntry = 0
 	it.curIndex = 0
 	return err
+}
+func (it *iterator) restorIndexBlock(offset int64) (*indexBlock, error) {
+	_, err := it.filePtr.Seek(offset, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	indexBlock := &indexBlock{}
+	err = binary.Read(it.filePtr, binary.LittleEndian, &indexBlock.blockEntriesCount)
+	if err != nil {
+		return nil, err
+	}
+	err = binary.Read(it.filePtr, binary.LittleEndian, &indexBlock.blockSize)
+	if err != nil {
+		return nil, err
+	}
+	var minKeyLen int64
+	err = binary.Read(it.filePtr, binary.LittleEndian, &minKeyLen)
+	if err != nil {
+		return nil, err
+	}
+	indexBlock.minKey = make([]byte, minKeyLen)
+	err = binary.Read(it.filePtr, binary.LittleEndian, &indexBlock.minKey)
+	if err != nil {
+		return nil, err
+	}
+	var maxKeyLen int64
+	err = binary.Read(it.filePtr, binary.LittleEndian, &maxKeyLen)
+	if err != nil {
+		return nil, err
+	}
+	indexBlock.maxKey = make([]byte, maxKeyLen)
+	err = binary.Read(it.filePtr, binary.LittleEndian, &indexBlock.maxKey)
+	if err != nil {
+		return nil, err
+	}
+	indexEntryNum := int(indexBlock.blockEntriesCount / it.cfg.SPARSE_INDEX_INTERVAL)
+	indexBlock.metadataEntries = make([]*indexEntry, indexEntryNum)
+	for i := range indexBlock.metadataEntries {
+		iEntry := &indexEntry{}
+		err = binary.Read(it.filePtr, binary.LittleEndian, &iEntry.offset)
+		if err != nil {
+			return nil, err
+		}
+		var keyLen int64
+		err := binary.Read(it.filePtr, binary.LittleEndian, &keyLen)
+		if err != nil {
+			return nil, err
+		}
+		iEntry.key = make([]byte, keyLen)
+		err = binary.Read(it.filePtr, binary.LittleEndian, iEntry.key)
+		if err != nil {
+			return nil, err
+		}
+		indexBlock.metadataEntries[i] = iEntry
+	}
+	return indexBlock, nil
+}
+func (it *iterator) restoreFooter() ([]int64, error) {
+	fi, err := it.filePtr.Stat()
+	if err != nil {
+		return nil, err
+	}
+	_, err = it.filePtr.Seek(fi.Size()-8, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	var offsetNum int64
+	err = binary.Read(it.filePtr, binary.LittleEndian, &offsetNum)
+	if err != nil {
+		return nil, err
+	}
+	temp := make([]byte, offsetNum*8)
+	_, err = it.filePtr.Seek(fi.Size()-(offsetNum+1)*8, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	err = binary.Read(it.filePtr, binary.LittleEndian, temp)
+	if err != nil {
+		return nil, err
+	}
+	offsetBytes := bytes.NewBuffer(temp)
+	offsets := make([]int64, offsetNum)
+	for i := range offsets {
+		err = binary.Read(offsetBytes, binary.LittleEndian, &offsets[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return offsets, nil
 }
 func (it *iterator) decodeEntry(buf *bytes.Buffer) (*memtable.Entry, error) {
 	var keyLen int64

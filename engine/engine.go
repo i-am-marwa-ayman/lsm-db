@@ -18,19 +18,24 @@ type Engine struct {
 }
 
 func NewEngine(cfg *shared.Config) (*Engine, error) {
-	sstableManager, err := sstable.NewSsManager(cfg)
+	db := &Engine{
+		cfg:  cfg,
+		lock: &sync.Mutex{},
+	}
+	log.Printf("setup data path: %s...\n", db.cfg.DATA_PATH)
+	db.memtable = memtable.NewMemtable(db.cfg)
+
+	var err error
+	db.sstableManager, err = sstable.NewSsManager(db.cfg)
 	if err != nil {
+		log.Printf("setup failed: %v", err)
 		return nil, err
 	}
-	return &Engine{
-		memtable:       memtable.NewMemtable(cfg),
-		sstableManager: sstableManager,
-		cfg:            cfg,
-		lock:           &sync.Mutex{},
-	}, nil
+	log.Println("setup done")
+	return db, nil
 }
-func (db *Engine) Close() {
-	db.sstableManager.Close()
+func (db *Engine) Close() error {
+	return db.sstableManager.Close()
 }
 func (db *Engine) Get(key string) (string, error) {
 	db.lock.Lock()

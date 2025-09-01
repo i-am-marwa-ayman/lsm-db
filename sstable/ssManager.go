@@ -1,6 +1,7 @@
 package sstable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
@@ -20,24 +21,46 @@ func creatPath(dataPath string) error {
 	}
 	return nil
 }
-func NewSsManager(cfg *shared.Config) (*SsManager, error) {
-	sst := make([][]*sstable, 3)
-	for i := range sst {
-		sst[i] = make([]*sstable, 0)
+
+func (sm *SsManager) writeManfiestFile() error {
+	file, err := os.OpenFile(sm.cfg.DATA_PATH+"/manifest", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
 	}
+	defer file.Close()
+	err = binary.Write(file, binary.LittleEndian, int64(len(sm.sstables)))
+	if err != nil {
+		return fmt.Errorf("failed to write manifest file: %w", err)
+	}
+	for _, l := range sm.sstables {
+		err = binary.Write(file, binary.LittleEndian, int64(len(l)))
+		if err != nil {
+			return fmt.Errorf("failed to write manifest file: %w", err)
+		}
+	}
+	return nil
+}
+func NewSsManager(cfg *shared.Config) (*SsManager, error) {
+	sm := &SsManager{cfg: cfg}
 	err := creatPath(cfg.DATA_PATH)
-	return &SsManager{
-		sstables: sst,
-		cfg:      cfg,
-	}, err
+	if err != nil {
+		return nil, err
+	}
+	sm.sstables, err = sm.recover()
+	if err != nil {
+		return nil, err
+	}
+	sm.listSstables()
+	return sm, err
 }
 
-func (sm *SsManager) Close() {
+func (sm *SsManager) Close() error {
 	for _, level := range sm.sstables {
 		for _, st := range level {
 			st.it.close()
 		}
 	}
+	return sm.writeManfiestFile()
 }
 func (sm *SsManager) AddSstable(entries []*memtable.Entry) error {
 	st := sm.newSstable(fmt.Sprintf("%s/0.%d.data", sm.cfg.DATA_PATH, len(sm.sstables[0])))
@@ -49,7 +72,6 @@ func (sm *SsManager) AddSstable(entries []*memtable.Entry) error {
 	if err != nil {
 		return err
 	}
-	// st.readSstable()
 	sm.sstables[0] = append(sm.sstables[0], st)
 	err = sm.fixLevels()
 	sm.listSstables()
@@ -60,6 +82,9 @@ func (sm *SsManager) listSstables() {
 	fmt.Println(len(sm.sstables))
 	for i, level := range sm.sstables {
 		fmt.Printf("in level %d: %d sstabless\n", i, len(level))
+		for j := range len(level) {
+			fmt.Printf("in sstable %d: %d block\n", j, len(sm.sstables[i][j].indexBlocks))
+		}
 	}
 }
 
@@ -78,7 +103,6 @@ func (sm *SsManager) fixLevels() error {
 			if err != nil {
 				return err
 			}
-			// nst.readSstable()
 			// if newsstable if empty do not add it (all deleted)
 			if nst.size > 0 {
 				sm.sstables[i+1] = append(sm.sstables[i+1], nst)

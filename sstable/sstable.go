@@ -117,3 +117,23 @@ func (st *sstable) searchSstable(key []byte) (*memtable.Entry, error) {
 	startOffset, size := st.searchIndex(index, key)
 	return st.it.seekAndSearchKey(key, startOffset, size)
 }
+func (st *sstable) recover() error {
+	var err error
+	st.it, err = st.newIterator()
+	if err != nil {
+		return err
+	}
+	blockIndexOffsets, err := st.it.restoreFooter()
+	if err != nil {
+		return err
+	}
+	st.indexBlocks = make([]*indexBlock, len(blockIndexOffsets))
+	for i, blockIndexOffset := range blockIndexOffsets {
+		st.indexBlocks[i], err = st.it.restorIndexBlock(blockIndexOffset)
+		if err != nil {
+			return err
+		}
+		st.size += int(st.indexBlocks[i].blockEntriesCount)
+	}
+	return nil
+}

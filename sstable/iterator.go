@@ -76,7 +76,7 @@ func (it *iterator) restorIndexBlock(offset int64) (*indexBlock, error) {
 	if err != nil {
 		return nil, err
 	}
-	indexEntryNum := int(indexBlock.blockEntriesCount / it.cfg.SPARSE_INDEX_INTERVAL)
+	indexEntryNum := int((indexBlock.blockEntriesCount - 1) / it.cfg.SPARSE_INDEX_INTERVAL)
 	indexBlock.metadataEntries = make([]*indexEntry, indexEntryNum)
 	for i := range indexBlock.metadataEntries {
 		iEntry := &indexEntry{}

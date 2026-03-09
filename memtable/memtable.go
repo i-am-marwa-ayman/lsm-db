@@ -27,13 +27,13 @@ func (mt *MemTable) Size() int32 {
 func (mt *MemTable) IsFull() bool {
 	return mt.maxSize <= mt.size
 }
-func (mt *MemTable) Get(key []byte) *Entry {
+func (mt *MemTable) Get(key []byte) *shared.Entry {
 	entry := mt.root.LookUp(key)
 	return entry
 }
 func (mt *MemTable) Set(key []byte, val []byte) error {
-	nEntry := NewEntry(key, val)
-	if nEntry.size() > int(mt.cfg.MAX_IN_DISK_PAGE_SIZE) {
+	nEntry := shared.NewEntry(key, val)
+	if nEntry.Size() > int(mt.cfg.MAX_IN_DISK_PAGE_SIZE) {
 		return fmt.Errorf("entry size exceed limit size")
 	}
 	newAdd := 0
@@ -42,8 +42,8 @@ func (mt *MemTable) Set(key []byte, val []byte) error {
 	return nil
 }
 func (mt *MemTable) Delete(key []byte) error {
-	nEntry := DeletedEntry(key)
-	if nEntry.size() > int(mt.cfg.MAX_IN_DISK_PAGE_SIZE) {
+	nEntry := shared.DeletedEntry(key)
+	if nEntry.Size() > int(mt.cfg.MAX_IN_DISK_PAGE_SIZE) {
 		return fmt.Errorf("entry size exceed limit size")
 	}
 	newAdd := 0
@@ -51,6 +51,6 @@ func (mt *MemTable) Delete(key []byte) error {
 	mt.size += int32(newAdd)
 	return nil
 }
-func (mt *MemTable) GetAll() []*Entry {
+func (mt *MemTable) GetAll() []*shared.Entry {
 	return mt.root.GetAll()
 }

@@ -1,4 +1,4 @@
-package memtable
+package shared
 
 import (
 	"bytes"
@@ -59,6 +59,6 @@ func (entry *Entry) ToBytes() ([]byte, error) {
 }
 
 // entry size in disk
-func (entry *Entry) size() int {
+func (entry *Entry) Size() int {
 	return (8 + 8 + len(entry.Key) + len(entry.Value) + 8 + 1)
 }

@@ -3,7 +3,6 @@ package sstable
 import (
 	"bytes"
 
-	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
@@ -23,7 +22,7 @@ func (sm *SsManager) newSstable(fileName string) *sstable {
 		it:          nil,
 	}
 }
-func (st *sstable) writeSstable(entries []*memtable.Entry) error {
+func (st *sstable) writeSstable(entries []*shared.Entry) error {
 	w, err := st.newBlockWriter()
 	if err != nil {
 		return err
@@ -109,7 +108,7 @@ func (st *sstable) searchBlock(key []byte) int {
 	return -1
 }
 
-func (st *sstable) searchSstable(key []byte) (*memtable.Entry, error) {
+func (st *sstable) searchSstable(key []byte) (*shared.Entry, error) {
 	index := st.searchBlock(key)
 	if index == -1 {
 		return nil, nil

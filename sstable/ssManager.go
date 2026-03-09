@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
@@ -62,7 +61,7 @@ func (sm *SsManager) Close() error {
 	}
 	return sm.writeManfiestFile()
 }
-func (sm *SsManager) AddSstable(entries []*memtable.Entry) error {
+func (sm *SsManager) AddSstable(entries []*shared.Entry) error {
 	st := sm.newSstable(fmt.Sprintf("%s/0.%d.data", sm.cfg.DATA_PATH, len(sm.sstables[0])))
 	err := st.writeSstable(entries)
 	if err != nil {
@@ -121,7 +120,7 @@ func (sm *SsManager) fixLevels() error {
 	return nil
 }
 
-func (sm *SsManager) Get(key []byte) *memtable.Entry {
+func (sm *SsManager) Get(key []byte) *shared.Entry {
 	for l, level := range sm.sstables {
 		for i := len(level) - 1; i >= 0; i-- {
 			sstable := level[i]

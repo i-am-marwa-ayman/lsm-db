@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
@@ -30,7 +29,7 @@ func (st *sstable) newBlockWriter() (*blockWriter, error) {
 	}, err
 }
 
-func (w *blockWriter) addEntry(entry *memtable.Entry) error {
+func (w *blockWriter) addEntry(entry *shared.Entry) error {
 	if w.curIndex == nil {
 		w.curIndex = w.newIndexBlock()
 	}

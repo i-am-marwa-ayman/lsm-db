@@ -3,16 +3,14 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/i-am-marwa-ayman/lsm-db/shared"
 	"io"
 	"os"
-
-	"github.com/i-am-marwa-ayman/lsm-db/memtable"
-	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
 type iterator struct {
 	filePtr     *os.File
-	entries     []*memtable.Entry
+	entries     []*shared.Entry
 	indexBlocks []*indexBlock
 	curEntry    int
 	curIndex    int
@@ -131,7 +129,7 @@ func (it *iterator) restoreFooter() ([]int64, error) {
 	}
 	return offsets, nil
 }
-func (it *iterator) decodeEntry(buf *bytes.Buffer) (*memtable.Entry, error) {
+func (it *iterator) decodeEntry(buf *bytes.Buffer) (*shared.Entry, error) {
 	var keyLen int64
 	err := binary.Read(buf, binary.LittleEndian, &keyLen)
 	if err != nil {
@@ -163,7 +161,7 @@ func (it *iterator) decodeEntry(buf *bytes.Buffer) (*memtable.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &memtable.Entry{
+	return &shared.Entry{
 		Key:       key,
 		Value:     val,
 		Timestamp: time,
@@ -173,7 +171,7 @@ func (it *iterator) decodeEntry(buf *bytes.Buffer) (*memtable.Entry, error) {
 func (it *iterator) decodeBlock(data []byte) error {
 	index := it.indexBlocks[it.curIndex]
 	buf := bytes.NewBuffer(data[:index.blockSize])
-	it.entries = make([]*memtable.Entry, index.blockEntriesCount)
+	it.entries = make([]*shared.Entry, index.blockEntriesCount)
 	for i := 0; i < int(index.blockEntriesCount); i++ {
 		entry, err := it.decodeEntry(buf)
 		if err != nil {
@@ -183,7 +181,7 @@ func (it *iterator) decodeBlock(data []byte) error {
 	}
 	return nil
 }
-func (it *iterator) seekAndSearchKey(target []byte, start int64, size int32) (*memtable.Entry, error) {
+func (it *iterator) seekAndSearchKey(target []byte, start int64, size int32) (*shared.Entry, error) {
 	_, err := it.filePtr.Seek(start, io.SeekStart)
 	if err != nil {
 		return nil, err
@@ -220,7 +218,7 @@ func (it *iterator) load() error {
 	return nil
 }
 
-func (it *iterator) next() (*memtable.Entry, error) {
+func (it *iterator) next() (*shared.Entry, error) {
 	if it.curEntry == len(it.entries) {
 		if it.curIndex == len(it.indexBlocks) {
 			return nil, nil // if there is no return nil

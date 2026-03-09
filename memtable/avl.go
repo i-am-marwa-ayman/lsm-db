@@ -3,17 +3,19 @@ package memtable
 import (
 	"bytes"
 	"fmt"
+
+	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
 type AVL struct {
 	key    []byte
-	val    *Entry
+	val    *shared.Entry
 	height int
 	right  *AVL
 	left   *AVL
 }
 
-func NewAVL(key []byte, val *Entry) *AVL {
+func NewAVL(key []byte, val *shared.Entry) *AVL {
 	return &AVL{
 		key:    key,
 		val:    val,
@@ -71,8 +73,8 @@ func balance(node *AVL) *AVL {
 	return node
 }
 
-func (avl *AVL) Insert(key []byte, val *Entry) (*AVL, int) {
-	newAdd := val.size()
+func (avl *AVL) Insert(key []byte, val *shared.Entry) (*AVL, int) {
+	newAdd := val.Size()
 	if avl == nil {
 		avl = NewAVL(key, val)
 	}
@@ -96,7 +98,7 @@ func (avl *AVL) Insert(key []byte, val *Entry) (*AVL, int) {
 	return balance(avl), newAdd
 }
 
-func (avl *AVL) LookUp(key []byte) *Entry {
+func (avl *AVL) LookUp(key []byte) *shared.Entry {
 	if avl == nil {
 		return nil
 	}
@@ -109,12 +111,12 @@ func (avl *AVL) LookUp(key []byte) *Entry {
 	}
 }
 
-func (avl *AVL) GetAll() []*Entry {
+func (avl *AVL) GetAll() []*shared.Entry {
 	nodes := []*AVL{}
 
 	top := avl
 
-	entries := []*Entry{}
+	entries := []*shared.Entry{}
 
 	//          1
 	//        /   \

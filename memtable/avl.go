@@ -7,37 +7,35 @@ import (
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
-type AVL struct {
-	key    []byte
-	val    *shared.Entry
+type avl struct {
+	entry  *shared.Entry
 	height int
-	right  *AVL
-	left   *AVL
+	right  *avl
+	left   *avl
 }
 
-func NewAVL(key []byte, val *shared.Entry) *AVL {
-	return &AVL{
-		key:    key,
-		val:    val,
+func NewAVL(entry *shared.Entry) *avl {
+	return &avl{
+		entry:  entry,
 		height: 0,
 		right:  nil,
 		left:   nil,
 	}
 }
 
-func (avl *AVL) childHeight(child *AVL) int {
+func (node *avl) childHeight(child *avl) int {
 	if child == nil {
 		return -1
 	}
 	return child.height
 }
-func (avl *AVL) updateHeight() {
-	avl.height = 1 + max(avl.childHeight(avl.left), avl.childHeight(avl.right))
+func (node *avl) updateHeight() {
+	node.height = 1 + max(node.childHeight(node.left), node.childHeight(node.right))
 }
-func (avl *AVL) balanceFactor() int {
-	return avl.childHeight(avl.left) - avl.childHeight(avl.right)
+func (node *avl) balanceFactor() int {
+	return node.childHeight(node.left) - node.childHeight(node.right)
 }
-func rightRotation(q *AVL) *AVL {
+func rightRotation(q *avl) *avl {
 	p := q.left
 	q.left = p.right
 	p.right = q
@@ -47,7 +45,7 @@ func rightRotation(q *AVL) *AVL {
 
 	return p
 }
-func leftRotation(p *AVL) *AVL {
+func leftRotation(p *avl) *avl {
 	q := p.right
 	p.right = q.left
 	q.left = p
@@ -57,7 +55,7 @@ func leftRotation(p *AVL) *AVL {
 
 	return q
 }
-func balance(node *AVL) *AVL {
+func balance(node *avl) *avl {
 	if node.balanceFactor() == 2 { // left-something
 		if node.left.balanceFactor() == -1 { // left-right
 			node.left = leftRotation(node.left) // convert to left-left
@@ -73,48 +71,48 @@ func balance(node *AVL) *AVL {
 	return node
 }
 
-func (avl *AVL) Insert(key []byte, val *shared.Entry) (*AVL, int) {
-	newAdd := val.Size()
-	if avl == nil {
-		avl = NewAVL(key, val)
+func (node *avl) Insert(entry *shared.Entry) (*avl, int) {
+	newAdd := entry.Size()
+	if node == nil {
+		node = NewAVL(entry)
 	}
-	if bytes.Equal(key, avl.key) {
-		avl.val = val
-		newAdd = 0
-	} else if bytes.Compare(key, avl.key) < 0 {
-		if avl.left == nil {
-			avl.left = NewAVL(key, val)
+	if bytes.Equal(entry.Key, node.entry.Key) {
+		newAdd = entry.Size() - node.entry.Size()
+		node.entry = entry
+	} else if bytes.Compare(entry.Key, node.entry.Key) < 0 {
+		if node.left == nil {
+			node.left = NewAVL(entry)
 		} else {
-			avl.left, newAdd = avl.left.Insert(key, val)
+			node.left, newAdd = node.left.Insert(entry)
 		}
 	} else {
-		if avl.right == nil {
-			avl.right = NewAVL(key, val)
+		if node.right == nil {
+			node.right = NewAVL(entry)
 		} else {
-			avl.right, newAdd = avl.right.Insert(key, val)
+			node.right, newAdd = node.right.Insert(entry)
 		}
 	}
-	avl.updateHeight()
-	return balance(avl), newAdd
+	node.updateHeight()
+	return balance(node), newAdd
 }
 
-func (avl *AVL) LookUp(key []byte) *shared.Entry {
-	if avl == nil {
+func (node *avl) LookUp(key []byte) *shared.Entry {
+	if node == nil {
 		return nil
 	}
-	if bytes.Equal(key, avl.key) {
-		return avl.val
-	} else if bytes.Compare(key, avl.key) < 0 {
-		return avl.left.LookUp(key)
+	if bytes.Equal(key, node.entry.Key) {
+		return node.entry
+	} else if bytes.Compare(key, node.entry.Key) < 0 {
+		return node.left.LookUp(key)
 	} else {
-		return avl.right.LookUp(key)
+		return node.right.LookUp(key)
 	}
 }
 
-func (avl *AVL) GetAll() []*shared.Entry {
-	nodes := []*AVL{}
+func (node *avl) GetAll() []*shared.Entry {
+	nodes := []*avl{}
 
-	top := avl
+	top := node
 
 	entries := []*shared.Entry{}
 
@@ -131,17 +129,17 @@ func (avl *AVL) GetAll() []*shared.Entry {
 		}
 		top = nodes[len(nodes)-1] // 4
 		nodes = nodes[:len(nodes)-1]
-		entries = append(entries, top.val)
+		entries = append(entries, top.entry)
 		top = top.right
 	}
 	return entries
 }
-func (avl *AVL) PrintAll() {
-	if avl.left != nil {
-		avl.left.PrintAll()
+func (node *avl) PrintAll() {
+	if node.left != nil {
+		node.left.PrintAll()
 	}
-	fmt.Printf("key: %s, val: %s, balance factor: %d\n", avl.key, avl.val.Value, avl.balanceFactor())
-	if avl.right != nil {
-		avl.right.PrintAll()
+	fmt.Printf("key: %s, val: %s, balance factor: %d\n", node.entry.Key, node.entry.Value, node.balanceFactor())
+	if node.right != nil {
+		node.right.PrintAll()
 	}
 }

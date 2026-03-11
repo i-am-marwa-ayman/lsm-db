@@ -30,13 +30,14 @@ func NewEngine() (*Engine, error) {
 	var err error
 	db.wal, err = wal.NewWal(db.cfg)
 	entries, err := db.wal.Recover()
-
-	for _, entry := range entries {
-		err = db.memtable.AddEntry(entry)
-		if err != nil {
-			return nil, err
-		}
+	if err != nil {
+		return nil, err
 	}
+	err = db.memtable.SetAll(entries)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Printf("[Engine] Memtable recovered with %d bytes from WAL\n", db.memtable.Size())
 
 	db.sstableManager, err = sstable.NewSsManager(db.cfg)

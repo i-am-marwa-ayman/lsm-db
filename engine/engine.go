@@ -8,33 +8,61 @@ import (
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 	"github.com/i-am-marwa-ayman/lsm-db/sstable"
+	"github.com/i-am-marwa-ayman/lsm-db/wal"
 )
 
 type Engine struct {
 	memtable       *memtable.MemTable
 	sstableManager *sstable.SsManager
+	wal            *wal.Wal
 	cfg            *shared.Config
 	lock           *sync.Mutex
 }
 
-func NewEngine(cfg *shared.Config) (*Engine, error) {
+func NewEngine() (*Engine, error) {
 	db := &Engine{
-		cfg:  cfg,
+		cfg:  shared.NewConfig(),
 		lock: &sync.Mutex{},
 	}
 	log.Printf("setup data path: %s...\n", db.cfg.DATA_PATH)
 	db.memtable = memtable.NewMemtable(db.cfg)
 
 	var err error
+	db.wal, err = wal.NewWal(db.cfg)
+	entries, err := db.wal.Recover()
+
+	for _, entry := range entries {
+		err = db.memtable.AddEntry(entry)
+		if err != nil {
+			return nil, err
+		}
+	}
+	log.Printf("memtable setup done with size %d\n", db.memtable.Size())
+
 	db.sstableManager, err = sstable.NewSsManager(db.cfg)
 	if err != nil {
-		log.Printf("setup failed: %v", err)
+		log.Printf("sstable manager setup failed: %v\n", err)
 		return nil, err
 	}
 	log.Println("setup done")
 	return db, nil
 }
+func (db *Engine) Flush() error {
+	log.Println("full table")
+	log.Println("loading to disk...")
+	err := db.sstableManager.AddSstable(db.memtable.GetAll())
+	if err != nil {
+		return err
+	}
+	err = db.wal.Clear()
+	if err != nil {
+		return err
+	}
+	db.memtable = memtable.NewMemtable(db.cfg)
+	return nil
+}
 func (db *Engine) Close() error {
+	db.wal.Close()
 	return db.sstableManager.Close()
 }
 func (db *Engine) Get(key string) (string, error) {
@@ -60,19 +88,21 @@ func (db *Engine) Get(key string) (string, error) {
 func (db *Engine) Set(key string, val string) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
-	err := db.memtable.Set([]byte(key), []byte(val))
+	entry := shared.NewEntry([]byte(key), []byte(val))
+	err := db.wal.Append(entry)
+	if err != nil {
+		return err
+	}
+	err = db.memtable.Set([]byte(key), []byte(val))
 	if err != nil {
 		return err
 	}
 	log.Printf("key %s is inserted\n", key)
 	if db.memtable.IsFull() {
-		log.Println("full table")
-		log.Println("loading to disk...")
-		err := db.sstableManager.AddSstable(db.memtable.GetAll())
+		err = db.Flush()
 		if err != nil {
 			return err
 		}
-		db.memtable = memtable.NewMemtable(db.cfg)
 	}
 	return nil
 }
@@ -80,20 +110,23 @@ func (db *Engine) Set(key string, val string) error {
 func (db *Engine) Delete(key string) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
-	err := db.memtable.Delete([]byte(key))
+	entry := shared.DeletedEntry([]byte(key))
+	err := db.wal.Append(entry)
+	if err != nil {
+		return err
+	}
+	err = db.memtable.Delete([]byte(key))
 	if err != nil {
 		return err
 	}
 	log.Printf("key %s is deleted\n", key)
 	if db.memtable.IsFull() {
-		log.Println("full table")
-		log.Println("loading to disk...")
-		err = db.sstableManager.AddSstable(db.memtable.GetAll())
-		fmt.Println(err)
-		if err != nil {
-			return err
+		if db.memtable.IsFull() {
+			err = db.Flush()
+			if err != nil {
+				return err
+			}
 		}
-		db.memtable = memtable.NewMemtable(db.cfg)
 	}
 	return nil
 }

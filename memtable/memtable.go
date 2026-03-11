@@ -27,6 +27,15 @@ func (mt *MemTable) Size() int32 {
 func (mt *MemTable) IsFull() bool {
 	return mt.maxSize <= mt.size
 }
+func (mt *MemTable) AddEntry(entry *shared.Entry) error {
+	if entry.Size() > int(mt.cfg.MAX_IN_DISK_PAGE_SIZE) {
+		return fmt.Errorf("entry size exceed limit size")
+	}
+	newAdd := 0
+	mt.root, newAdd = mt.root.Insert(entry.Key, entry)
+	mt.size += int32(newAdd) // will add entry size if we update non-existing val in memtable
+	return nil
+}
 func (mt *MemTable) Get(key []byte) *shared.Entry {
 	entry := mt.root.LookUp(key)
 	return entry

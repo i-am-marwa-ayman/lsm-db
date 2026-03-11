@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
@@ -62,7 +63,7 @@ func (sm *SsManager) Close() error {
 	return sm.writeManfiestFile()
 }
 func (sm *SsManager) AddSstable(entries []*shared.Entry) error {
-	st := sm.newSstable(fmt.Sprintf("%s/0.%d.data", sm.cfg.DATA_PATH, len(sm.sstables[0])))
+	st := sm.newSstable(sm.cfg.DATA_PATH + "/0." + strconv.Itoa(len(sm.sstables[0])) + ".data")
 	err := st.writeSstable(entries)
 	if err != nil {
 		return err
@@ -77,27 +78,28 @@ func (sm *SsManager) AddSstable(entries []*shared.Entry) error {
 	return err
 }
 func (sm *SsManager) listSstables() {
-	fmt.Println("sstable layout")
-	fmt.Println(len(sm.sstables))
+	log.Println("[SSManager] ==================== SSTable Layout ====================")
+	log.Printf("[SSManager] Total levels: %d\n", len(sm.sstables))
 	for i, level := range sm.sstables {
-		fmt.Printf("in level %d: %d sstabless\n", i, len(level))
+		log.Printf("[SSManager]   Level %d: %d SSTables\n", i, len(level))
 		for j := range len(level) {
-			fmt.Printf("in sstable %d: %d block\n", j, len(sm.sstables[i][j].indexBlocks))
+			log.Printf("[SSManager]     └─ SSTable %d: %d blocks\n", j, len(sm.sstables[i][j].indexBlocks))
 		}
 	}
+	log.Println("[SSManager] =========================================================")
 }
 
 func (sm *SsManager) fixLevels() error {
 	for i, level := range sm.sstables {
 		if len(level) == 2 {
-			log.Printf("start compact level %d to level %d...\n", i, i+1)
+			log.Printf("[SSManager] Starting compaction: level %d -> level %d\n", i, i+1)
 			deleteZombie := false
 			if len(sm.sstables) == i+1 {
 				deleteZombie = true
 				nlevel := make([]*sstable, 0)
 				sm.sstables = append(sm.sstables, nlevel)
 			}
-			nst := sm.newSstable(fmt.Sprintf("%s/%d.%d.data", sm.cfg.DATA_PATH, i+1, len(sm.sstables[i+1])))
+			nst := sm.newSstable(sm.cfg.DATA_PATH + "/" + strconv.Itoa(i+1) + "." + strconv.Itoa(len(sm.sstables[i+1])) + ".data")
 			err := nst.compact(level[0], level[1], deleteZombie)
 			if err != nil {
 				return err
@@ -111,10 +113,10 @@ func (sm *SsManager) fixLevels() error {
 					return err
 				}
 			} else {
-				log.Println("delete sstable")
+				log.Println("[SSManager] Compacted SSTable is empty, skipping write")
 			}
 			sm.sstables[i] = make([]*sstable, 0)
-			log.Printf("level %d compacted successfully\n", i)
+			log.Printf("[SSManager] Level %d compacted successfully\n", i)
 		}
 	}
 	return nil
@@ -126,11 +128,11 @@ func (sm *SsManager) Get(key []byte) *shared.Entry {
 			sstable := level[i]
 			if entry, err := sstable.searchSstable(key); entry != nil {
 				if !entry.Tombstone {
-					log.Printf("key founded in sstable: %s\n", sstable.fileName)
+					log.Printf("[SSManager] Key found in sstable: %s\n", sstable.fileName)
 				}
 				return entry
 			} else if err != nil {
-				log.Printf("error happend in sstable %d.%d: %s\n", l, i, err)
+				log.Printf("[SSManager] Error searching sstable %d.%d: %s\n", l, i, err)
 			}
 		}
 	}

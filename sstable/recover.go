@@ -3,9 +3,9 @@ package sstable
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"log"
 	"os"
+	"strconv"
 )
 
 func (sm *SsManager) defaultSstables() [][]*sstable {
@@ -17,9 +17,10 @@ func (sm *SsManager) defaultSstables() [][]*sstable {
 }
 func (sm *SsManager) recover() ([][]*sstable, error) {
 	if _, err := os.Stat(sm.cfg.DATA_PATH + "/manifest"); errors.Is(err, os.ErrNotExist) {
+		log.Println("[SSManager] No manifest found, initializing with empty SSTables")
 		return sm.defaultSstables(), nil
 	}
-	log.Println("working on recovering...")
+	log.Println("[SSManager] Starting recovery from manifest...")
 	file, err := os.Open(sm.cfg.DATA_PATH + "/manifest")
 	if err != nil {
 		return nil, err
@@ -30,6 +31,7 @@ func (sm *SsManager) recover() ([][]*sstable, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("[SSManager] Recovering %d levels from manifest\n", levelNum)
 	sstables := make([][]*sstable, levelNum)
 	for i := range sstables {
 		var n int64
@@ -39,16 +41,17 @@ func (sm *SsManager) recover() ([][]*sstable, error) {
 		}
 		level := make([]*sstable, n)
 		for j := range level {
-			nst := sm.newSstable(fmt.Sprintf("%s/%d.%d.data", sm.cfg.DATA_PATH, i, j))
+			nst := sm.newSstable(sm.cfg.DATA_PATH + "/" + strconv.Itoa(i) + "." + strconv.Itoa(j) + ".data")
 			err = nst.recover()
 			if err != nil {
 				return nil, err
 			}
 			level[j] = nst
 		}
+		log.Printf("[SSManager] Recovered level %d with %d SSTables\n", i, n)
 		sstables[i] = level
 	}
-	log.Println("recovering done")
+	log.Println("[SSManager] Recovery completed successfully")
 	if len(sstables) == 0 {
 		sstables = sm.defaultSstables()
 	}

@@ -24,7 +24,7 @@ func NewEngine() (*Engine, error) {
 		cfg:  shared.NewConfig(),
 		lock: &sync.Mutex{},
 	}
-	log.Printf("setup data path: %s...\n", db.cfg.DATA_PATH)
+	log.Printf("[Engine] Initializing LSM-DB with data path: %s\n", db.cfg.DATA_PATH)
 	db.memtable = memtable.NewMemtable(db.cfg)
 
 	var err error
@@ -37,19 +37,18 @@ func NewEngine() (*Engine, error) {
 			return nil, err
 		}
 	}
-	log.Printf("memtable setup done with size %d\n", db.memtable.Size())
+	log.Printf("[Engine] Memtable recovered with %d bytes from WAL\n", db.memtable.Size())
 
 	db.sstableManager, err = sstable.NewSsManager(db.cfg)
 	if err != nil {
-		log.Printf("sstable manager setup failed: %v\n", err)
+		log.Printf("[Engine] Failed to initialize SSTable manager: %v\n", err)
 		return nil, err
 	}
-	log.Println("setup done")
+	log.Println("[Engine] Successfully initialized LSM-DB engine")
 	return db, nil
 }
 func (db *Engine) Flush() error {
-	log.Println("full table")
-	log.Println("loading to disk...")
+	log.Printf("[Engine] Flushing memtable (%d bytes) to disk...\n", db.memtable.Size())
 	err := db.sstableManager.AddSstable(db.memtable.GetAll())
 	if err != nil {
 		return err
@@ -97,8 +96,9 @@ func (db *Engine) Set(key string, val string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("key %s is inserted\n", key)
+	log.Printf("[Engine] SET key=%s\n", key)
 	if db.memtable.IsFull() {
+		log.Println("[Engine] Memtable size limit reached, triggering flush")
 		err = db.Flush()
 		if err != nil {
 			return err
@@ -119,13 +119,12 @@ func (db *Engine) Delete(key string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("key %s is deleted\n", key)
+	log.Printf("[Engine] DELETE key=%s\n", key)
 	if db.memtable.IsFull() {
-		if db.memtable.IsFull() {
-			err = db.Flush()
-			if err != nil {
-				return err
-			}
+		log.Println("[Engine] Memtable size limit reached, triggering flush")
+		err = db.Flush()
+		if err != nil {
+			return err
 		}
 	}
 	return nil

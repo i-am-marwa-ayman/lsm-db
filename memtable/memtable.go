@@ -30,6 +30,9 @@ func (mt *MemTable) Size() int32 {
 func (mt *MemTable) IsFull() bool {
 	return mt.maxSize <= mt.size
 }
+func (mt *MemTable) IsEmpty() bool {
+	return mt.size == 0
+}
 func (mt *MemTable) addEntry(entry *shared.Entry) error {
 	if entry.Size() > int(mt.cfg.MAX_IN_DISK_PAGE_SIZE) {
 		return fmt.Errorf("entry size exceeds max page size")

@@ -95,6 +95,10 @@ func (wal *Wal) Append(entry *shared.Entry) error {
 		return err
 	}
 	err = binary.Write(wal.filePtr, binary.LittleEndian, entryBytes)
+	if err != nil {
+		return err
+	}
+	err = wal.filePtr.Sync()
 	return err
 }
 

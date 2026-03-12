@@ -28,14 +28,16 @@ func NewEngine() (*Engine, error) {
 	db.memtable = memtable.NewMemtable(db.cfg)
 
 	var err error
-	db.wal, err = wal.NewWal(db.cfg)
-	entries, err := db.wal.Recover()
-	if err != nil {
-		return nil, err
-	}
-	err = db.memtable.SetAll(entries)
-	if err != nil {
-		return nil, err
+	if db.cfg.ENABLE_WAL {
+		db.wal, err = wal.NewWal(db.cfg)
+		entries, err := db.wal.Recover()
+		if err != nil {
+			return nil, err
+		}
+		err = db.memtable.SetAll(entries)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	log.Printf("[Engine] Memtable recovered with %d bytes from WAL\n", db.memtable.Size())
@@ -54,15 +56,27 @@ func (db *Engine) Flush() error {
 	if err != nil {
 		return err
 	}
-	err = db.wal.Clear()
-	if err != nil {
-		return err
+	if db.cfg.ENABLE_WAL {
+		err = db.wal.Clear()
+		if err != nil {
+			return err
+		}
 	}
 	db.memtable = memtable.NewMemtable(db.cfg)
 	return nil
 }
 func (db *Engine) Close() error {
-	db.wal.Close()
+	if db.cfg.ENABLE_WAL {
+		db.wal.Close()
+	} else {
+		if !db.memtable.IsEmpty() {
+			err := db.Flush()
+			// i think this is wrong we need to close all resources
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return db.sstableManager.Close()
 }
 func (db *Engine) Get(key string) (string, error) {
@@ -89,11 +103,13 @@ func (db *Engine) Set(key string, val string) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 	entry := shared.NewEntry([]byte(key), []byte(val))
-	err := db.wal.Append(entry)
-	if err != nil {
-		return err
+	if db.cfg.ENABLE_WAL {
+		err := db.wal.Append(entry)
+		if err != nil {
+			return err
+		}
 	}
-	err = db.memtable.Set([]byte(key), []byte(val))
+	err := db.memtable.Set([]byte(key), []byte(val))
 	if err != nil {
 		return err
 	}
@@ -112,11 +128,13 @@ func (db *Engine) Delete(key string) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 	entry := shared.DeletedEntry([]byte(key))
-	err := db.wal.Append(entry)
-	if err != nil {
-		return err
+	if db.cfg.ENABLE_WAL {
+		err := db.wal.Append(entry)
+		if err != nil {
+			return err
+		}
 	}
-	err = db.memtable.Delete([]byte(key))
+	err := db.memtable.Delete([]byte(key))
 	if err != nil {
 		return err
 	}

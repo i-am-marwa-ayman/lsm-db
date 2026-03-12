@@ -5,6 +5,7 @@ type Config struct {
 	MAX_IN_MEMORY_SIZE    int32
 	SPARSE_INDEX_INTERVAL int32
 	DATA_PATH             string
+	ENABLE_WAL            bool
 }
 
 func NewConfig() *Config {
@@ -13,5 +14,6 @@ func NewConfig() *Config {
 		MAX_IN_MEMORY_SIZE:    16 * 1024,
 		SPARSE_INDEX_INTERVAL: 10,
 		DATA_PATH:             "./../data",
+		ENABLE_WAL:            true,
 	}
 }

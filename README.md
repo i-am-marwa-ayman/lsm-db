@@ -1,32 +1,54 @@
-#  LSM-DB
+# LSM-DB
 
 A lightweight, educational implementation of an LSM-tree based key-value database. Built from scratch in Go to understand the fundamental concepts behind modern database storage engines.
 
 
 ## Features
 
-- **LSM-Tree Architecture** with multi-level storage and automatic compaction
-- **AVL Tree MemTable** for balanced in-memory operations
-- **Block-based SSTables** with 4KB fixed-size data blocks
-- **Sparse Indexing** for memory-efficient lookups
-- **Automatic Compaction** across storage levels
-- **Tombstone Deletions** with proper cleanup
-- **Binary Search** optimization throughout
-- **State Persistence** with manifest-based recovery
+- **LSM-Tree Architecture** — multi-level storage with automatic compaction
+- **AVL Tree MemTable** — balanced in-memory operations
+- **Write-Ahead Log (WAL)** — crash recovery for uncommitted writes
+- **Block-based SSTables** — fixed 4KB data blocks for efficient I/O
+- **Sparse Index** — memory-efficient indexing at configurable intervals
+- **Tombstone Deletions** — logical deletes with compaction-time cleanup
+- **Binary Search** — fast block and index-level lookups
+- **Manifest-based Recovery** — full state reconstruction on startup
+
 
 ## Architecture
 
 ```
-Engine → MemTable (AVL Tree) → SSTable Manager
-                                     ↓
-                            Level 0: [SSTable] [SSTable]
-                            Level 1: [SSTable]
-                            Level 2: [SSTable]
-                                     ↓
-                              Manifest File
+Write Path:
+  Set(key, val) / Delete(key)
+      │
+      ├─► WAL (append-only log for crash safety)
+      │
+      └─► MemTable (AVL Tree, in-memory)
+              │
+              │ [full → flush]
+              ▼
+          SSTable Level 0
+              │
+              │ [2 SSTables → compact]
+              ▼
+          SSTable Level 1
+              │
+              │ [2 SSTables → compact]
+              ▼
+          SSTable Level 2  ← tombstones purged here (if the last level)
+
+Read Path:
+  Get(key)
+      │
+      ├─► MemTable  (most recent)
+      ├─► Level 0   (newest SSTables first)
+      ├─► Level 1
+      └─► Level 2   (oldest data)
 ```
 
-### SSTable File Structure
+
+## SSTable File Format
+
 
 ```
 ┌─────────────────┬─────────────────┬─────────────────┐
@@ -38,59 +60,83 @@ Engine → MemTable (AVL Tree) → SSTable Manager
 ├─────────────────┼─────────────────┼─────────────────┤
 │  index block    │  index block    │  index block    │
 ├─────────────────┴─────────────────┴─────────────────┤
-│                    footer                           │
+│                      footer                         │
 └─────────────────────────────────────────────────────┘
 ```
 
-#### Data Block Structure (fixed size 4KB)
+### Data Block Layout
+
 ```
-┌────────┬────────┬────────┬────────┬────────┐
-│ entry1 │ entry2 │ entry3 │ entry4 │ entryN │
-└────────┴────────┴────────┴────────┴────────┘
+┌───────────┬───────────┬───────────┬───────┬───────────┬──────────────────┐
+│  entry 0  │  entry 1  │  entry 2  │  ...  │  entry N  │  zero padding    │
+└───────────┴───────────┴───────────┴───────┴───────────┴──────────────────┘
 ```
 
-#### Entry Structure (variable size)
+### Entry Layout
+
 ```
 ┌─────────┬───────┬─────────┬───────┬───────────┬─────────┐
 │ key len │  key  │ val len │  val  │ timestamp │ deleted │
 └─────────┴───────┴─────────┴───────┴───────────┴─────────┘
 ```
 
-#### Sparse Index Block Structure (variable size)
+### Index Block Layout
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  block size, entry count, min key, max key                  │
-│  [sparse entries at configurable intervals]                 │
-│  offset1, key1, offset2, key2, ..., offsetN, keyN           │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────┬───────────┬────────────┬────────────┬────────────┬────────────┐
+│ blockEntriesCount │ blockSize │ minKey_len │   minKey   │ maxKey_len │   maxKey   │
+└───────────────────┴───────────┴────────────┴────────────┴────────────┴────────────┘
+┌───────────────────┬───────┬───────────────────┐
+│   sparseEntry1    │  ...  │   sparseEntryN    │
+└───────────────────┴───────┴───────────────────┘
+```
+### IndexEntry
+```
+┌────────┬─────────┬─────┐
+│ offset │ key_len │ key │
+└────────┴─────────┴─────┘
 ```
 
-#### Footer Structure (variable size)
+Index entries are written every `SPARSE_INDEX_INTERVAL` records.
+
+### Footer Layout
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ indexBlock1 offset, indexBlock2 offset, indexBlock3 offset, │
-│ indexN offset, block count                                  │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────┬──────────────────────┬───────┬─────────────┐
+│ index_block_0_offset │ index_block_1_offset │  ...  │ block_count │
+└──────────────────────┴──────────────────────┴───────┴─────────────┘
 ```
 
-### Sparse Indexing System
-- **Configurable Intervals**: Index entries created every N records (default: 10)
-- **Memory Efficiency**: Reduces index size while maintaining fast lookups
-- **Two-Level Search**: Block-level binary search followed by sparse index navigation
-- **Range Optimization**: Min/max keys in each block enable quick range elimination
 
-### Persistence & Recovery
-- **Manifest File**: Tracks all SSTable files and their organization across levels
-- **Automatic Recovery**: Database state restored from disk on startup
-- **Footer-based Restoration**: Index blocks rebuilt from SSTable footers
+## Lookup Algorithm
+
+1. **Block search** — binary search across index blocks using `minKey`/`maxKey` to find the candidate data block. O(log B) where B = number of blocks.
+2. **Sparse index navigation** — within the chosen index block, binary search the sparse entries to narrow the byte range to search. O(log(N / interval)).
+3. **Linear scan** — sequential scan within the identified byte window (at most `SPARSE_INDEX_INTERVAL` entries). O(interval).
 
 
-### Data Flow
-1. **Write Path**: Data → MemTable → SSTable (Level 0) → Compaction
-2. **Read Path**: MemTable → Level 0 → Level 1 → Level 2...
-3. **Compaction**: 2 SSTables per level trigger merge to next level
-4. **Search**: Block binary search → Sparse index navigation → Linear search within interval range
-5. **Recovery**: Manifest parsing → SSTable restoration → Index rebuilding
+## Compaction
+
+- When any level accumulates **2 SSTables**, they are merged into the next level.
+- Merging is a sort-merge join on sorted key order. For duplicate keys, the entry from the newer SSTable wins.
+- Tombstones (deleted keys) are preserved through intermediate levels and **purged only at the last level**, ensuring deleted keys are not resurrected from older SSTables.
+- If compaction produces an empty SSTable (all entries were tombstones), the file is discarded.
+
+
+## Write-Ahead Log (WAL)
+
+When `ENABLE_WAL` is true, every write (`Set` / `Delete`) is appended to `wal.log` before being applied to the MemTable. On startup, the WAL is replayed into a fresh MemTable to recover any writes that were not yet flushed to disk. The WAL is truncated after each successful flush.
+
+
+## Persistence & Recovery
+
+The `manifest` file records the number of levels and the number of SSTables per level. On startup:
+
+1. The manifest is read to determine the SSTable layout.
+2. Each SSTable's footer is parsed to locate its index blocks.
+3. Index blocks are reconstructed in memory, ready for lookups.
+
+No full file scan is needed at startup.
 
 
 ## Build & Run
@@ -100,6 +146,7 @@ git clone https://github.com/i-am-marwa-ayman/lsm-db
 cd lsm-db
 go run main.go
 ```
+
 
 ## Configuration
 
@@ -111,31 +158,37 @@ type Config struct {
     MAX_IN_MEMORY_SIZE    int32  // MemTable size limit (default: 16KB)
     SPARSE_INDEX_INTERVAL int32  // Indexing interval (default: 10)
     DATA_PATH             string // Storage directory
+    ENABLE_WAL            bool   // Enable write-ahead log (default: true)
 }
 ```
 
-## File Structure
 
-After running, the following files are created in the data directory:
+## File Structure
 
 ```
 data/
-├── manifest           # Database structure metadata
+├── wal.log           # Write-ahead log for crash recovery
+├── manifest          # Database structure metadata
 ├── 0.0.data          # Level 0 SSTable files
 ├── 0.1.data
 ├── 1.0.data          # Level 1 SSTable files
 └── ...
 ```
 
+SSTable filenames follow the pattern `{level}.{index}.data`.
+
+
 ## Future Work
-- [ ] **Write-Ahead Logging**: Crash recovery for uncommitted data  
-- [ ] **Bloom Filters**: Fast negative lookups
-- [x] **Block-based Storage**: Better I/O efficiency ✓
-- [x] **Sparse Indexing**: Memory-efficient index structures ✓
-- [x] **Persistence & Recovery**: Rebuild state on startup ✓
-- [ ] **Range Queries**: Iterator support for key ranges
-- [ ] **Concurrency**: Thread-safe operations with finer-grained locking
-- [ ] **Client-Server Architecture**: Database server with CLI client interface
+
+- [x] **Write-Ahead Logging** — crash recovery for uncommitted data
+- [x] **Block-based Storage** — better I/O efficiency
+- [x] **Sparse Indexing** — memory-efficient index structures
+- [x] **Persistence & Recovery** — rebuild state on startup
+- [ ] **Bloom Filters** — fast negative lookups
+- [ ] **Range Queries** — iterator support for key ranges
+- [ ] **Concurrency** — thread-safe operations with finer-grained locking
+- [ ] **Client-Server Architecture** — database server with CLI client interface
+
 
 ## Feedback
 

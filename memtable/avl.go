@@ -74,7 +74,7 @@ func balance(node *avl) *avl {
 func (node *avl) Insert(entry *shared.Entry) (*avl, int) {
 	newAdd := entry.Size()
 	if node == nil {
-		node = NewAVL(entry)
+		return NewAVL(entry), newAdd
 	}
 	if bytes.Equal(entry.Key, node.entry.Key) {
 		newAdd = entry.Size() - node.entry.Size()

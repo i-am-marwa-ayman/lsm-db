@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
@@ -13,6 +14,7 @@ import (
 type SsManager struct {
 	sstables [][]*sstable
 	cfg      *shared.Config
+	lock     *sync.RWMutex
 }
 
 func creatPath(dataPath string) error {
@@ -20,6 +22,32 @@ func creatPath(dataPath string) error {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 	return nil
+}
+
+func NewSsManager(cfg *shared.Config) (*SsManager, error) {
+	sm := &SsManager{
+		cfg:  cfg,
+		lock: &sync.RWMutex{},
+	}
+	err := creatPath(cfg.DATA_PATH)
+	if err != nil {
+		return nil, err
+	}
+	sm.sstables, err = sm.recover()
+	if err != nil {
+		return nil, err
+	}
+	sm.ListSstables()
+	return sm, err
+}
+
+func (sm *SsManager) Close() error {
+	for _, level := range sm.sstables {
+		for _, st := range level {
+			st.it.close()
+		}
+	}
+	return sm.writeManfiestFile()
 }
 
 func (sm *SsManager) writeManfiestFile() error {
@@ -38,31 +66,16 @@ func (sm *SsManager) writeManfiestFile() error {
 			return fmt.Errorf("failed to write manifest file: %w", err)
 		}
 	}
-	return nil
-}
-func NewSsManager(cfg *shared.Config) (*SsManager, error) {
-	sm := &SsManager{cfg: cfg}
-	err := creatPath(cfg.DATA_PATH)
-	if err != nil {
-		return nil, err
-	}
-	sm.sstables, err = sm.recover()
-	if err != nil {
-		return nil, err
-	}
-	sm.listSstables()
-	return sm, err
+	err = file.Sync()
+	return err
 }
 
-func (sm *SsManager) Close() error {
-	for _, level := range sm.sstables {
-		for _, st := range level {
-			st.it.close()
-		}
-	}
-	return sm.writeManfiestFile()
-}
 func (sm *SsManager) AddSstable(entries []*shared.Entry) error {
+	sm.lock.Lock()
+	defer sm.lock.Unlock()
+	if len(entries) == 0 {
+		return nil
+	}
 	st := sm.newSstable(sm.cfg.DATA_PATH + "/0." + strconv.Itoa(len(sm.sstables[0])) + ".data")
 	err := st.writeSstable(entries)
 	if err != nil {
@@ -74,10 +87,13 @@ func (sm *SsManager) AddSstable(entries []*shared.Entry) error {
 	}
 	sm.sstables[0] = append(sm.sstables[0], st)
 	err = sm.fixLevels()
-	sm.listSstables()
+	if err != nil {
+		return err
+	}
+	sm.ListSstables()
 	return err
 }
-func (sm *SsManager) listSstables() {
+func (sm *SsManager) ListSstables() {
 	log.Println("[SSManager] ==================== SSTable Layout ====================")
 	log.Printf("[SSManager] Total levels: %d\n", len(sm.sstables))
 	for i, level := range sm.sstables {
@@ -123,16 +139,19 @@ func (sm *SsManager) fixLevels() error {
 }
 
 func (sm *SsManager) Get(key []byte) *shared.Entry {
+	sm.lock.RLock()
+	defer sm.lock.RUnlock()
+
 	for l, level := range sm.sstables {
 		for i := len(level) - 1; i >= 0; i-- {
 			sstable := level[i]
 			if entry, err := sstable.searchSstable(key); entry != nil {
 				if !entry.Tombstone {
-					log.Printf("[SSManager] Key found in sstable: %s\n", sstable.fileName)
+					log.Printf("[SSManager] Key found in sstable: %d.%d.data\n", l, i)
 				}
 				return entry
 			} else if err != nil {
-				log.Printf("[SSManager] Error searching sstable %d.%d: %s\n", l, i, err)
+				log.Printf("[SSManager] Error searching sstable %d.%d.data: %s\n", l, i, err)
 			}
 		}
 	}

@@ -8,81 +8,73 @@ import (
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 	"github.com/i-am-marwa-ayman/lsm-db/sstable"
-	"github.com/i-am-marwa-ayman/lsm-db/wal"
 )
 
 type Engine struct {
 	memtable       *memtable.MemTable
+	imutable       []*memtable.MemTable
 	sstableManager *sstable.SsManager
-	wal            *wal.Wal
 	cfg            *shared.Config
-	lock           *sync.Mutex
+	lock           *sync.RWMutex
+	flushCh        chan struct{}
+	wg             sync.WaitGroup
 }
 
 func NewEngine() (*Engine, error) {
 	db := &Engine{
 		cfg:  shared.NewConfig(),
-		lock: &sync.Mutex{},
+		lock: &sync.RWMutex{},
 	}
 	log.Printf("[Engine] Initializing LSM-DB with data path: %s\n", db.cfg.DATA_PATH)
+
 	db.memtable = memtable.NewMemtable(db.cfg)
-
 	var err error
-	if db.cfg.ENABLE_WAL {
-		db.wal, err = wal.NewWal(db.cfg)
-		entries, err := db.wal.Recover()
-		if err != nil {
-			return nil, err
-		}
-		err = db.memtable.SetAll(entries)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	log.Printf("[Engine] Memtable recovered with %d bytes from WAL\n", db.memtable.Size())
-
 	db.sstableManager, err = sstable.NewSsManager(db.cfg)
 	if err != nil {
 		log.Printf("[Engine] Failed to initialize SSTable manager: %v\n", err)
 		return nil, err
 	}
+	db.flushCh = make(chan struct{}, 10)
+	db.wg.Add(1)
+	go db.flushWorker()
 	log.Println("[Engine] Successfully initialized LSM-DB engine")
 	return db, nil
 }
-func (db *Engine) Flush() error {
-	log.Printf("[Engine] Flushing memtable (%d bytes) to disk...\n", db.memtable.Size())
-	err := db.sstableManager.AddSstable(db.memtable.GetAll())
-	if err != nil {
-		return err
-	}
-	if db.cfg.ENABLE_WAL {
-		err = db.wal.Clear()
+
+func (db *Engine) flushWorker() {
+	defer db.wg.Done()
+	for range db.flushCh {
+		db.lock.Lock()
+		toFlush := db.imutable[0]
+		db.lock.Unlock()
+
+		err := db.sstableManager.AddSstable(toFlush.GetAll())
 		if err != nil {
-			return err
+			log.Printf("[Engine] error happend while flushing %v\n", err)
 		}
+
+		db.lock.Lock()
+		db.imutable = db.imutable[1:]
+		db.lock.Unlock()
 	}
-	db.memtable = memtable.NewMemtable(db.cfg)
-	return nil
 }
 func (db *Engine) Close() error {
-	if db.cfg.ENABLE_WAL {
-		db.wal.Close()
+	db.lock.Lock()
+	if !db.memtable.IsEmpty() {
+		log.Println("[Engine] Flushing remaining memtable before shutdown")
+		db.imutable = append(db.imutable, db.memtable)
+		db.lock.Unlock()
+		db.flushCh <- struct{}{}
 	} else {
-		if !db.memtable.IsEmpty() {
-			err := db.Flush()
-			// i think this is wrong we need to close all resources
-			if err != nil {
-				return err
-			}
-		}
+		db.lock.Unlock()
 	}
+	close(db.flushCh)
+	db.wg.Wait()
 	return db.sstableManager.Close()
 }
 func (db *Engine) Get(key string) (string, error) {
-	db.lock.Lock()
-	defer db.lock.Unlock()
-	entry := db.memtable.Get([]byte(key))
+	entry := db.searchMemtable([]byte(key))
+
 	if entry != nil {
 		if !entry.Tombstone {
 			return string(entry.Value), nil
@@ -99,51 +91,63 @@ func (db *Engine) Get(key string) (string, error) {
 	return "", fmt.Errorf("key does not exist")
 }
 
+// we reduce the time of set by making the flush happen in the background
+// it is not a finer lock but it is a good start to make the flush happen in the background without blocking the main thread
 func (db *Engine) Set(key string, val string) error {
 	db.lock.Lock()
-	defer db.lock.Unlock()
-	entry := shared.NewEntry([]byte(key), []byte(val))
-	if db.cfg.ENABLE_WAL {
-		err := db.wal.Append(entry)
-		if err != nil {
-			return err
-		}
-	}
 	err := db.memtable.Set([]byte(key), []byte(val))
 	if err != nil {
 		return err
 	}
 	log.Printf("[Engine] SET key=%s\n", key)
+
 	if db.memtable.IsFull() {
 		log.Println("[Engine] Memtable size limit reached, triggering flush")
-		err = db.Flush()
-		if err != nil {
-			return err
-		}
+		db.imutable = append(db.imutable, db.memtable)
+		db.memtable = memtable.NewMemtable(db.cfg)
+		db.lock.Unlock()
+
+		db.flushCh <- struct{}{}
+	} else {
+		db.lock.Unlock()
 	}
 	return nil
 }
 
 func (db *Engine) Delete(key string) error {
 	db.lock.Lock()
-	defer db.lock.Unlock()
-	entry := shared.DeletedEntry([]byte(key))
-	if db.cfg.ENABLE_WAL {
-		err := db.wal.Append(entry)
-		if err != nil {
-			return err
-		}
-	}
 	err := db.memtable.Delete([]byte(key))
 	if err != nil {
 		return err
 	}
 	log.Printf("[Engine] DELETE key=%s\n", key)
+
 	if db.memtable.IsFull() {
 		log.Println("[Engine] Memtable size limit reached, triggering flush")
-		err = db.Flush()
-		if err != nil {
-			return err
+		db.imutable = append(db.imutable, db.memtable)
+		db.memtable = memtable.NewMemtable(db.cfg)
+		db.lock.Unlock()
+
+		db.flushCh <- struct{}{}
+	} else {
+		db.lock.Unlock()
+	}
+	return nil
+}
+
+func (db *Engine) searchMemtable(key []byte) *shared.Entry {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	entry := db.memtable.Get(key)
+	if entry != nil {
+		return entry
+	}
+
+	for i := len(db.imutable) - 1; i >= 0; i-- {
+		entry = db.imutable[i].Get(key)
+		if entry != nil {
+			return entry
 		}
 	}
 	return nil

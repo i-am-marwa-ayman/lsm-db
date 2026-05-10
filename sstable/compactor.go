@@ -5,6 +5,15 @@ import (
 )
 
 func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) error {
+	st.lock.Lock()
+	defer st.lock.Unlock()
+
+	first.lock.Lock()
+	defer first.lock.Unlock()
+
+	second.lock.Lock()
+	defer second.lock.Unlock()
+
 	firstIterator := first.it
 	defer firstIterator.close()
 
@@ -115,5 +124,6 @@ func (st *sstable) compact(first *sstable, second *sstable, deleteZombie bool) e
 		return err
 	}
 	st.indexBlocks = w.indexBlocks
-	return nil
+	err = w.filePtr.Sync()
+	return err
 }

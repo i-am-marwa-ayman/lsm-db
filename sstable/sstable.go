@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"bytes"
+	"sync"
 
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
@@ -12,6 +13,7 @@ type sstable struct {
 	size        int
 	cfg         *shared.Config
 	it          *iterator
+	lock        *sync.Mutex
 }
 
 func (sm *SsManager) newSstable(fileName string) *sstable {
@@ -20,9 +22,13 @@ func (sm *SsManager) newSstable(fileName string) *sstable {
 		indexBlocks: make([]*indexBlock, 0),
 		cfg:         sm.cfg,
 		it:          nil,
+		lock:        &sync.Mutex{},
 	}
 }
 func (st *sstable) writeSstable(entries []*shared.Entry) error {
+	st.lock.Lock()
+	defer st.lock.Unlock()
+
 	w, err := st.newBlockWriter()
 	if err != nil {
 		return err
@@ -45,9 +51,11 @@ func (st *sstable) writeSstable(entries []*shared.Entry) error {
 		return err
 	}
 	st.indexBlocks = w.indexBlocks
-	return nil
+	err = w.filePtr.Sync()
+	return err
 }
 
+// this part need refactoring
 // get data window between two index to search target
 func (st *sstable) searchIndex(index int, key []byte) (startOffset int64, size int32) {
 	indexBlock := st.indexBlocks[index]
@@ -114,9 +122,15 @@ func (st *sstable) searchSstable(key []byte) (*shared.Entry, error) {
 		return nil, nil
 	}
 	startOffset, size := st.searchIndex(index, key)
+
+	st.lock.Lock()
+	defer st.lock.Unlock()
 	return st.it.seekAndSearchKey(key, startOffset, size)
 }
 func (st *sstable) recover() error {
+	st.lock.Lock()
+	defer st.lock.Unlock()
+
 	var err error
 	st.it, err = st.newIterator()
 	if err != nil {

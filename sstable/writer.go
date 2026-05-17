@@ -43,7 +43,7 @@ func (w *blockWriter) addEntry(entry *shared.Entry) error {
 			if w.curIndex.blockEntriesCount == 0 {
 				w.curIndex.minKey = entry.Key
 			} else {
-				w.curIndex.addIndexEntry(int32(len(w.data)), entry.Key)
+				w.curIndex.addIndexEntry(int64(len(w.data)), entry.Key)
 			}
 		}
 		w.curIndex.maxKey = entry.Key // always update maxkey
@@ -63,7 +63,7 @@ func (w *blockWriter) flushDataBlock() error {
 	if len(w.data) == 0 {
 		return nil
 	}
-	w.curIndex.blockSize = int32(len(w.data))
+	w.curIndex.blockSize = int64(len(w.data))
 	w.indexBlocks = append(w.indexBlocks, w.curIndex)
 	// fill data block
 	if len(w.data) < int(w.cfg.MAX_IN_DISK_PAGE_SIZE) {

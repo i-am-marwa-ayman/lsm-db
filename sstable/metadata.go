@@ -6,13 +6,13 @@ import (
 )
 
 type indexEntry struct {
-	offset int32 // offset within the block
+	offset int64 // offset within the block
 	key    []byte
 }
 
 type indexBlock struct {
-	blockSize         int32 // will not exceed 4 * 1024
-	blockEntriesCount int32
+	blockSize         int64
+	blockEntriesCount int64
 	metadataEntries   []*indexEntry
 	minKey            []byte
 	maxKey            []byte
@@ -27,7 +27,7 @@ func (w *blockWriter) newIndexBlock() *indexBlock {
 		maxKey:            make([]byte, 0),
 	}
 }
-func (b *indexBlock) addIndexEntry(offset int32, key []byte) {
+func (b *indexBlock) addIndexEntry(offset int64, key []byte) {
 	entry := &indexEntry{offset: offset, key: key}
 	b.metadataEntries = append(b.metadataEntries, entry)
 }

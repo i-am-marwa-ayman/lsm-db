@@ -3,17 +3,18 @@ package sstable
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/i-am-marwa-ayman/lsm-db/shared"
 	"io"
 	"os"
+
+	"github.com/i-am-marwa-ayman/lsm-db/shared"
 )
 
 type iterator struct {
 	filePtr     *os.File
 	entries     []*shared.Entry
 	indexBlocks []*indexBlock
-	curEntry    int
-	curIndex    int
+	curEntry    int64
+	curIndex    int64
 	cfg         *shared.Config
 }
 
@@ -181,7 +182,7 @@ func (it *iterator) decodeBlock(data []byte) error {
 	}
 	return nil
 }
-func (it *iterator) seekAndSearchKey(target []byte, start int64, size int32) (*shared.Entry, error) {
+func (it *iterator) seekAndSearchKey(target []byte, start int64, size int64) (*shared.Entry, error) {
 	_, err := it.filePtr.Seek(start, io.SeekStart)
 	if err != nil {
 		return nil, err
@@ -219,8 +220,8 @@ func (it *iterator) load() error {
 }
 
 func (it *iterator) next() (*shared.Entry, error) {
-	if it.curEntry == len(it.entries) {
-		if it.curIndex == len(it.indexBlocks) {
+	if it.curEntry == int64(len(it.entries)) {
+		if it.curIndex == int64(len(it.indexBlocks)) {
 			return nil, nil // if there is no return nil
 		}
 		err := it.load()

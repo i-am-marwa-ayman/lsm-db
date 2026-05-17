@@ -57,7 +57,7 @@ func (st *sstable) writeSstable(entries []*shared.Entry) error {
 
 // this part need refactoring
 // get data window between two index to search target
-func (st *sstable) searchIndex(index int, key []byte) (startOffset int64, size int32) {
+func (st *sstable) searchIndex(index int, key []byte) (startOffset int64, size int64) {
 	indexBlock := st.indexBlocks[index]
 	// block entries than SPARSE_INDEX_INTERVAL
 	if len(indexBlock.metadataEntries) == 0 {

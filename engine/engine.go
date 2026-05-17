@@ -8,12 +8,14 @@ import (
 	"github.com/i-am-marwa-ayman/lsm-db/memtable"
 	"github.com/i-am-marwa-ayman/lsm-db/shared"
 	"github.com/i-am-marwa-ayman/lsm-db/sstable"
+	"github.com/i-am-marwa-ayman/lsm-db/wal"
 )
 
 type Engine struct {
 	memtable       *memtable.MemTable
 	imutable       []*memtable.MemTable
 	sstableManager *sstable.SsManager
+	wal            *wal.Wal
 	cfg            *shared.Config
 	lock           *sync.RWMutex
 	flushCh        chan struct{}
@@ -34,9 +36,32 @@ func NewEngine() (*Engine, error) {
 		log.Printf("[Engine] Failed to initialize SSTable manager: %v\n", err)
 		return nil, err
 	}
-	db.flushCh = make(chan struct{}, 10)
+	db.flushCh = make(chan struct{}, 20)
 	db.wg.Add(1)
 	go db.flushWorker()
+
+	if db.cfg.ENABLE_WAL {
+		db.wal, err = wal.NewWal(db.cfg)
+		if err != nil {
+			log.Printf("[Engine] Failed to initialize WAL: %v\n", err)
+			return nil, err
+		}
+
+		log.Println("[Engine] Recovering from WAL...")
+		entries, err := db.wal.Recover()
+		if err != nil {
+			log.Printf("[Engine] Failed to recover from WAL: %v\n", err)
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.Tombstone {
+				db.memtable.Delete(entry.Key)
+			} else {
+				db.memtable.Set(entry.Key, entry.Value)
+			}
+		}
+		log.Printf("[Engine] Recovered %d entries from WAL\n", len(entries))
+	}
 	log.Println("[Engine] Successfully initialized LSM-DB engine")
 	return db, nil
 }
@@ -55,12 +80,15 @@ func (db *Engine) flushWorker() {
 
 		db.lock.Lock()
 		db.imutable = db.imutable[1:]
+		if db.cfg.ENABLE_WAL {
+			db.wal.ClearSegment()
+		}
 		db.lock.Unlock()
 	}
 }
 func (db *Engine) Close() error {
 	db.lock.Lock()
-	if !db.memtable.IsEmpty() {
+	if !db.memtable.IsEmpty() && !db.cfg.ENABLE_WAL {
 		log.Println("[Engine] Flushing remaining memtable before shutdown")
 		db.imutable = append(db.imutable, db.memtable)
 		db.lock.Unlock()
@@ -70,6 +98,9 @@ func (db *Engine) Close() error {
 	}
 	close(db.flushCh)
 	db.wg.Wait()
+	if db.cfg.ENABLE_WAL {
+		db.wal.Close()
+	}
 	return db.sstableManager.Close()
 }
 func (db *Engine) Get(key string) (string, error) {
@@ -77,6 +108,7 @@ func (db *Engine) Get(key string) (string, error) {
 
 	if entry != nil {
 		if !entry.Tombstone {
+			log.Printf("[Engine] Key found in memtable: %s\n", key)
 			return string(entry.Value), nil
 		} else {
 			return "", fmt.Errorf("key does not exist")
@@ -85,6 +117,7 @@ func (db *Engine) Get(key string) (string, error) {
 
 	entry = db.sstableManager.Get([]byte(key))
 	if entry != nil && !entry.Tombstone {
+		log.Printf("[Engine] Key found in SSTable: %s\n", key)
 		return string(entry.Value), nil
 	}
 
@@ -95,14 +128,19 @@ func (db *Engine) Get(key string) (string, error) {
 // it is not a finer lock but it is a good start to make the flush happen in the background without blocking the main thread
 func (db *Engine) Set(key string, val string) error {
 	db.lock.Lock()
-	err := db.memtable.Set([]byte(key), []byte(val))
+	entry, err := db.memtable.Set([]byte(key), []byte(val))
 	if err != nil {
 		return err
 	}
 	log.Printf("[Engine] SET key=%s\n", key)
-
+	if db.cfg.ENABLE_WAL {
+		err = db.wal.Append(entry)
+		if err != nil {
+			return err
+		}
+	}
 	if db.memtable.IsFull() {
-		log.Println("[Engine] Memtable size limit reached, triggering flush")
+		log.Printf("[Engine] Memtable size limit reached %d, triggering flush", db.memtable.Size())
 		db.imutable = append(db.imutable, db.memtable)
 		db.memtable = memtable.NewMemtable(db.cfg)
 		db.lock.Unlock()
@@ -116,16 +154,23 @@ func (db *Engine) Set(key string, val string) error {
 
 func (db *Engine) Delete(key string) error {
 	db.lock.Lock()
-	err := db.memtable.Delete([]byte(key))
+	entry, err := db.memtable.Delete([]byte(key))
 	if err != nil {
 		return err
 	}
 	log.Printf("[Engine] DELETE key=%s\n", key)
+	if db.cfg.ENABLE_WAL {
+		err = db.wal.Append(entry)
+		if err != nil {
+			return err
+		}
+	}
 
 	if db.memtable.IsFull() {
 		log.Println("[Engine] Memtable size limit reached, triggering flush")
 		db.imutable = append(db.imutable, db.memtable)
 		db.memtable = memtable.NewMemtable(db.cfg)
+
 		db.lock.Unlock()
 
 		db.flushCh <- struct{}{}

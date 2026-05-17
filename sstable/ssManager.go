@@ -142,16 +142,13 @@ func (sm *SsManager) Get(key []byte) *shared.Entry {
 	sm.lock.RLock()
 	defer sm.lock.RUnlock()
 
-	for l, level := range sm.sstables {
+	for _, level := range sm.sstables {
 		for i := len(level) - 1; i >= 0; i-- {
 			sstable := level[i]
 			if entry, err := sstable.searchSstable(key); entry != nil {
-				if !entry.Tombstone {
-					log.Printf("[SSManager] Key found in sstable: %d.%d.data\n", l, i)
-				}
 				return entry
 			} else if err != nil {
-				log.Printf("[SSManager] Error searching sstable %d.%d.data: %s\n", l, i, err)
+				return nil
 			}
 		}
 	}

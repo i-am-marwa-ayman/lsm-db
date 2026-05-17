@@ -12,8 +12,8 @@ import (
 
 type MemTable struct {
 	root    *avl
-	size    int32
-	maxSize int32
+	size    int64
+	maxSize int64
 	cfg     *shared.Config
 	lock    *sync.RWMutex
 }
@@ -27,7 +27,7 @@ func NewMemtable(cfg *shared.Config) *MemTable {
 		lock:    &sync.RWMutex{},
 	}
 }
-func (mt *MemTable) Size() int32 {
+func (mt *MemTable) Size() int64 {
 	mt.lock.RLock()
 	defer mt.lock.RUnlock()
 	return mt.size
@@ -35,23 +35,12 @@ func (mt *MemTable) Size() int32 {
 func (mt *MemTable) IsFull() bool {
 	mt.lock.RLock()
 	defer mt.lock.RUnlock()
-	return mt.maxSize <= mt.size
+	return mt.size >= mt.maxSize
 }
 func (mt *MemTable) IsEmpty() bool {
 	mt.lock.RLock()
 	defer mt.lock.RUnlock()
 	return mt.size == 0
-}
-func (mt *MemTable) SetAll(entries []*shared.Entry) error {
-	mt.lock.Lock()
-	defer mt.lock.Unlock()
-	for _, entry := range entries {
-		err := mt.addEntry(entry)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 func (mt *MemTable) Get(key []byte) *shared.Entry {
 	mt.lock.RLock()
@@ -59,17 +48,17 @@ func (mt *MemTable) Get(key []byte) *shared.Entry {
 	entry := mt.root.LookUp(key)
 	return entry
 }
-func (mt *MemTable) Set(key []byte, val []byte) error {
+func (mt *MemTable) Set(key []byte, val []byte) (*shared.Entry, error) {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()
 	newEntry := shared.NewEntry(key, val)
-	return mt.addEntry(newEntry)
+	return newEntry, mt.addEntry(newEntry)
 }
-func (mt *MemTable) Delete(key []byte) error {
+func (mt *MemTable) Delete(key []byte) (*shared.Entry, error) {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()
 	newEntry := shared.DeletedEntry(key)
-	return mt.addEntry(newEntry)
+	return newEntry, mt.addEntry(newEntry)
 }
 func (mt *MemTable) GetAll() []*shared.Entry {
 	mt.lock.RLock()
@@ -81,8 +70,7 @@ func (mt *MemTable) addEntry(entry *shared.Entry) error {
 	if entry.Size() > int(mt.cfg.MAX_IN_DISK_PAGE_SIZE) {
 		return fmt.Errorf("entry size exceeds max page size")
 	}
-	newAdd := 0
-	mt.root, newAdd = mt.root.Insert(entry)
-	mt.size += int32(newAdd) // will add entry size if we update non-existing val in memtable (we will add the diff if existing)
+	mt.root = mt.root.Insert(entry)
+	mt.size += int64(entry.Size()) // will add entry size if we update non-existing val in memtable (we will add the diff if existing)
 	return nil
 }

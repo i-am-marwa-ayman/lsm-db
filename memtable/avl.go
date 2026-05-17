@@ -71,29 +71,27 @@ func balance(node *avl) *avl {
 	return node
 }
 
-func (node *avl) Insert(entry *shared.Entry) (*avl, int) {
-	newAdd := entry.Size()
+func (node *avl) Insert(entry *shared.Entry) (*avl) {
 	if node == nil {
-		return NewAVL(entry), newAdd
+		return NewAVL(entry)
 	}
 	if bytes.Equal(entry.Key, node.entry.Key) {
-		newAdd = entry.Size() - node.entry.Size()
 		node.entry = entry
 	} else if bytes.Compare(entry.Key, node.entry.Key) < 0 {
 		if node.left == nil {
 			node.left = NewAVL(entry)
 		} else {
-			node.left, newAdd = node.left.Insert(entry)
+			node.left = node.left.Insert(entry)
 		}
 	} else {
 		if node.right == nil {
 			node.right = NewAVL(entry)
 		} else {
-			node.right, newAdd = node.right.Insert(entry)
+			node.right = node.right.Insert(entry)
 		}
 	}
 	node.updateHeight()
-	return balance(node), newAdd
+	return balance(node)
 }
 
 func (node *avl) LookUp(key []byte) *shared.Entry {

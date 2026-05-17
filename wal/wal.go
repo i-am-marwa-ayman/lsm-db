@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"log"
 	"os"
 	"sync"
 
@@ -11,17 +12,21 @@ import (
 )
 
 type Wal struct {
-	cfg     *shared.Config
-	filePtr *os.File
-	lock    *sync.Mutex
+	cfg         *shared.Config
+	filePtr     *os.File
+	lock        *sync.Mutex
+	segments    []int64
+	curSegSize  int64
 }
 
 func NewWal(cfg *shared.Config) (*Wal, error) {
-	file, err := os.OpenFile(cfg.DATA_PATH+"/wal.log", os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(cfg.DATA_PATH+"/wal.log", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	return &Wal{
-		cfg:     cfg,
-		filePtr: file,
-		lock:    &sync.Mutex{},
+		cfg:         cfg,
+		filePtr:     file,
+		lock:        &sync.Mutex{},
+		segments:    make([]int64, 0),
+		curSegSize:  0,
 	}, err
 }
 func (wal *Wal) Recover() ([]*shared.Entry, error) {
@@ -37,6 +42,7 @@ func (wal *Wal) Recover() ([]*shared.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("[Wal] WAL file size: %d bytes\n", info.Size())
 	data := make([]byte, info.Size())
 
 	err = binary.Read(wal.filePtr, binary.LittleEndian, data)
@@ -84,6 +90,13 @@ func (wal *Wal) Recover() ([]*shared.Entry, error) {
 			Tombstone: deleted,
 		}
 		enties = append(enties, entry)
+
+		wal.curSegSize += int64(entry.Size())
+		if wal.curSegSize >= wal.cfg.MAX_IN_MEMORY_SIZE {
+			log.Printf("[Wal] Current WAL segment size %d bytes reached limit, starting new segment\n", wal.curSegSize)
+			wal.segments = append(wal.segments, wal.curSegSize)
+			wal.curSegSize = 0
+		}
 	}
 	return enties, nil
 }
@@ -98,19 +111,71 @@ func (wal *Wal) Append(entry *shared.Entry) error {
 	if err != nil {
 		return err
 	}
-	err = wal.filePtr.Sync()
-	return err
+	entrySize := int64(len(entryBytes))
+	wal.curSegSize += entrySize
+	if wal.curSegSize >= wal.cfg.MAX_IN_MEMORY_SIZE {
+		log.Printf("[Wal] Current WAL segment size %d bytes reached limit, starting new segment\n", wal.curSegSize)
+		wal.segments = append(wal.segments, wal.curSegSize)
+		wal.curSegSize = 0
+	}
+	if wal.cfg.SYNC {
+		err = wal.filePtr.Sync()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
-
-func (wal *Wal) Clear() error {
+func (wal *Wal) ClearSegment() error {
 	wal.lock.Lock()
 	defer wal.lock.Unlock()
-	err := wal.filePtr.Truncate(0)
+	if len(wal.segments) == 0 {
+		return nil
+	}
+	segmentsToClear := wal.segments[0]
+	wal.segments = wal.segments[1:]
+	_, err := wal.filePtr.Seek(segmentsToClear, io.SeekStart)
 	if err != nil {
 		return err
 	}
-	_, err = wal.filePtr.Seek(0, 0)
-	return err
+
+	tempFile, err := os.OpenFile(wal.cfg.DATA_PATH+"/temp.log", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(tempFile, wal.filePtr)
+	if err != nil {
+		return err
+	}
+	if wal.cfg.SYNC {
+		err = tempFile.Sync()
+		if err != nil {
+			return err
+		}
+	}
+	err = wal.filePtr.Close()
+	if err != nil {
+		return err
+	}
+	err = tempFile.Close()
+	if err != nil {
+		return err
+	}
+	err = os.Rename(wal.cfg.DATA_PATH+"/temp.log", wal.cfg.DATA_PATH+"/wal.log")
+	if err != nil {
+		return err
+	}
+	wal.filePtr, err = os.OpenFile(wal.cfg.DATA_PATH+"/wal.log", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	// new file size
+	info, err := wal.filePtr.Stat()
+	if err != nil {
+		return err
+	}
+	log.Printf("[Wal] Cleared %d bytes from WAL, new WAL size is %d bytes\n", segmentsToClear, info.Size())
+	return nil
 }
 func (wal *Wal) Close() {
 	wal.lock.Lock()
